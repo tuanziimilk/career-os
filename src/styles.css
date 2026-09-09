@@ -1,0 +1,493 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Career Field Notebook · 求职侦察手账
+   报纸编辑部 × 研究员手账 × 求职档案夹
+
+   核心原则：Digital system, physical metaphor.
+   信息架构像 Linear 一样清楚，视觉像一本长期使用的工作手册。
+
+   ⚠️ 反面参照（时刻自查）：撕纸边、胶带、手写体正文、咖啡渍——
+   任何一样堆多了就从 editorial 掉成"手账皮肤"。所以：
+     · 纸纹用 CSS 生成且极轻（不用图片素材，一张贴图就会显得廉价且拖慢加载）
+     · 手写感只出现在"批注"这一种语义上，绝不用于正文
+     · 印章只用于状态，不用于装饰
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── 纸与墨 ─────────────────────────────────────────────
+     桌面比纸更暗一点，纸浮在桌面上——这是整套视觉的地基。 */
+  --desk: #e4ddcd;        /* 桌面：比纸暗，冷一点 */
+  --paper: #f3efe6;       /* 主纸张 */
+  --paper-2: #ece6d8;     /* 次级纸/沉下去的区域 */
+  --paper-edge: #d8cfba;  /* 纸边 */
+
+  --ink: #1c1a17;         /* 正文墨色。不是纯黑——纯黑在暖纸上会发蓝 */
+  --ink-2: #4a463f;
+  --ink-3: #5f594d;       /* 次要信息。实测 #7a746a 在纸上只有 3.6:1，不达 AA */
+  --rule: #cdc4b0;        /* 分隔线 */
+  --rule-strong: #a99f88;
+
+  /* ── 桌面上的字 ─────────────────────────────────────────
+     左侧档案目录写在桌面上，不是写在纸上。纸的墨色（--ink）
+     在暗色模式下桌面变深后几乎看不见——这是实测撞到的可读性 bug。
+     所以"桌面上的字"必须是独立一套 token，跟着桌面明暗翻转。 */
+  --desk-ink: #332e25;
+  --desk-ink-2: #57503f;
+  --desk-ink-3: #625b49;
+  --desk-rule: #cbc2ad;
+  /* 桌面上的强调色必须和纸上分开：蓝色是为浅纸调的，
+     画在深桌面上实测只有 2.37:1（徽章和 jd-insight 链接都在那儿）。 */
+  --desk-link: #2f4f7d;
+
+  /* ── 两个强调色，就两个 ──────────────────────────────── */
+  --red: #a63a2c;         /* 编辑红笔：印章、批注、需要行动。比初版压深，小字要够 4.5:1 */
+  --red-soft: #f0e0dc;
+  --blue: #38598b;        /* 旧墨水蓝：链接、AI 分析、数据标记 */
+  --blue-soft: #dde3ed;
+  --hl: #f2e07a;          /* 荧光笔 / 便利贴。只做这一件事，不当 UI 主色 */
+  --hl-deep: #e8cf4f;
+
+  /* 语义色沿用两个强调色，不再新增颜色 */
+  --ok: #4a6741;          /* 已完成。低饱和橄榄绿，像旧印泥 */
+  --ok-soft: #e2e6da;
+
+  /* ── 三层字体 ───────────────────────────────────────────
+     标题 editorial serif + 中文宋体；正文 sans；标签 mono。
+     ⚠️ Playfair/Cormorant 没有中文字形，中英混排必须带 Noto Serif SC，
+        否则中文标题会掉回系统黑体，和英文标题在同一行里打架。 */
+  --serif: "Playfair Display", "Noto Serif SC", Georgia, "Songti SC", "SimSun", serif;
+  --sans: "Manrope", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+
+  --shadow-paper: 0 1px 2px rgba(60, 50, 30, 0.09), 0 6px 16px -8px rgba(60, 50, 30, 0.18);
+  --shadow-lift: 0 2px 4px rgba(60, 50, 30, 0.12), 0 14px 28px -12px rgba(60, 50, 30, 0.24);
+
+  /* ── 旧变量名 → 新色板的兼容层 ────────────────────────
+     图表组件（FunnelChart / CapabilityBars）里散落着 --acc / --stop /
+     --muted / --sunk / --warn。逐个改组件不如在这里做一次映射：
+     旧名字本身仍然是语义（--stop 就是"红/终止"），映射过去读得通，
+     而且以后再有组件用旧名也不会突然失色。 */
+  --acc: var(--blue);
+  --acc-soft: var(--blue-soft);
+  --stop: var(--red);
+  --stop-soft: var(--red-soft);
+  --warn: #8a6a1f;          /* 警告用暗金而不是荧光黄——黄色只留给便利贴 */
+  --warn-soft: color-mix(in srgb, var(--hl) 35%, var(--paper));
+  --muted: var(--ink-3);
+  --ink2: var(--ink-2);
+  --sunk: var(--paper-2);
+  --card: var(--paper);
+  --ok-soft: #e2e6da;
+}
+
+/* 暗色：变的是桌面，不是纸。
+   "深色的纸"就不是纸了——所以桌面变成深胡桃木，纸仍然是暖米白、只压暗一档。
+   白天在窗边看，晚上开一盏台灯看。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #211d18;
+    --paper: #e8e2d5;
+    --desk-ink: #e6dfcd;
+    --desk-ink-2: #bdb39c;
+    --desk-ink-3: #a29883;
+    --desk-rule: #423b30;
+    /* 深桌面上要用亮蓝，深蓝会掉到 2.4:1 */
+    --desk-link: #8fb4e0;
+    --paper-2: #ddd6c6;
+    --paper-edge: #c4bba6;
+    --shadow-paper: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 20px -8px rgba(0, 0, 0, 0.55);
+    --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.45), 0 18px 34px -12px rgba(0, 0, 0, 0.6);
+  }
+}
+:root[data-theme="dark"] {
+  --desk: #211d18;
+  --paper: #e8e2d5;
+  --desk-ink: #e6dfcd;
+  --desk-ink-2: #bdb39c;
+  --desk-ink-3: #a29883;
+  --desk-rule: #423b30;
+  /* 深桌面上要用亮蓝，深蓝会掉到 2.4:1 */
+  --desk-link: #8fb4e0;
+  --paper-2: #ddd6c6;
+  --paper-edge: #c4bba6;
+  --shadow-paper: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 20px -8px rgba(0, 0, 0, 0.55);
+  --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.45), 0 18px 34px -12px rgba(0, 0, 0, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+/* 桌面。极轻的纤维噪点用 SVG feTurbulence 生成——
+   不用位图素材：一张贴图既显廉价又拖加载，而且没法跟着主题变。 */
+body {
+  margin: 0;
+  color: var(--ink);
+  font: 15px/1.7 var(--sans);
+  background-color: var(--desk);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.055 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── 组件 1/4：纸卡 Paper Card ──────────────────────────
+   最基本的承载物。圆角极小（2px）——纸不是圆角卡片，
+   但完全直角在屏幕上又显得像表格线，2px 是"切纸刀"的感觉。 */
+.paper {
+  position: relative;
+  background-color: var(--paper);
+  border: 1px solid var(--paper-edge);
+  border-radius: 2px;
+  box-shadow: var(--shadow-paper);
+  /* ⚠️ 刻意不给纸加噪点纹理。
+     纹理直接铺在文字底下会削弱对比、让小字发毛——而这是每天要读几十遍的
+     工作界面，不是海报。质感由"桌面有纹理 + 纸浮在桌面上 + 纸边和投影"
+     三件事共同表达，不需要往正文底下垫东西。 */
+}
+
+/* ── 组件 2/4：报纸剪贴 Newspaper Clipping ───────────────
+   比纸卡更"薄"：底色偏灰、无阴影或极浅，左右有裁切的直边。
+   用于岗位卡片——它们本来就是从别处剪下来的。 */
+.clipping {
+  position: relative;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  box-shadow: 0 1px 1px rgba(60, 50, 30, 0.07);
+}
+/* 剪贴的上下边做成极细的锯齿，像裁纸刀边。用 mask 而不是伪元素贴图 */
+.clipping::before {
+  content: "";
+  position: absolute;
+  inset: -1px -1px auto -1px;
+  height: 2px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--rule) 0 3px,
+    transparent 3px 5px
+  );
+  opacity: 0.5;
+}
+
+/* ── 组件 3/4：便利贴 Sticky Note ────────────────────────
+   唯一使用黄色的地方。轻微旋转——但只有 0.4 度，
+   歪多了就是手账皮肤。 */
+.sticky {
+  background: var(--hl);
+  border: 0;
+  border-radius: 1px;
+  box-shadow: 0 1px 2px rgba(60, 50, 30, 0.16), 0 8px 14px -8px rgba(60, 50, 30, 0.22);
+  transform: rotate(-0.4deg);
+  color: #3f3610;
+}
+
+/* ── 组件 4/4：印章 Stamp ────────────────────────────────
+   状态用盖章表达。双线边框 + 轻微旋转 + 半透明，像橡皮章压上去。
+   刻意不加"墨迹不匀"的贴图：那属于素材包，不属于设计。 */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 600 10.5px/1 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 4px 7px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  /* 默认不旋转：表格/列表里一列二十个歪的标签是纯噪声，
+     而且旋转的文字确实更慢读。只有"头条那一枚"才配歪，用 .stamp-tilt。 */
+  opacity: 1;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
+}
+.stamp-tilt { transform: rotate(-1.5deg); }
+.stamp-red { color: var(--red); }
+.stamp-blue { color: var(--blue); }
+.stamp-ok { color: var(--ok); }
+.stamp-grey { color: var(--ink-3); }
+
+/* ── 排版 ───────────────────────────────────────────────── */
+/* ⚠️ serif 只用在 18px 以上的标题。
+   中文宋体的横笔很细，屏幕上 15px 以下会被抹掉、只剩竖笔——
+   "editorial serif" 那套审美来自拉丁字体，衬线在小字号下依然清晰，
+   中文没这个条件。所以小标题一律 sans 加粗，别硬套。 */
+h1,
+h2 {
+  font-family: var(--serif);
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+  text-wrap: balance;
+  letter-spacing: -0.01em;
+}
+h1 { font-size: 30px; line-height: 1.2; }
+h2 { font-size: 21px; line-height: 1.3; }
+h3 {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 15.5px;
+  line-height: 1.4;
+  color: var(--ink);
+  margin: 0;
+  letter-spacing: 0;
+}
+
+a {
+  color: var(--blue);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+/* 报纸栏目头：全大写 mono + 上下双线，像版面分区 */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font: 600 11.5px/1 var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--ink);
+  margin-bottom: 12px;
+}
+/* 右侧的中文说明不能跟着大写+加字距——它是要读的内容，不是标牌 */
+.section-head .n {
+  margin-left: auto;
+  font: 400 12.5px/1.3 var(--sans);
+  letter-spacing: 0;
+  color: var(--ink-2);
+  font-weight: 400;
+  text-transform: none;
+}
+
+/* 数据源标签。写在桌面上，所以用 desk-ink；
+   左侧一小段色条表示种类，不用 emoji——emoji 在 editorial 版面上很跳。 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 10px/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 5px 8px;
+  border: 1px solid var(--desk-rule);
+  border-radius: 1px;
+  color: var(--desk-ink-2);
+}
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  flex: none;
+}
+.badge.real { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.badge.local { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.badge.demo { color: var(--desk-link); border-color: color-mix(in srgb, var(--desk-link) 50%, transparent); }
+
+/* 元数据行：日期、编号、来源。永远 mono */
+/* 元数据。mono 保留（数字要对齐），但去掉字距、放大到 12.5px、
+   颜色提到 ink-2——这是每天要扫的东西，不是装饰性标牌。 */
+.meta {
+  font: 400 12.5px/1.55 var(--mono);
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+.meta-strong {
+  font: 600 12.5px/1.55 var(--mono);
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+/* 档案编号，如 AP-024 / M1 / LM。
+   只用于**英文短码**——大写加字距在这种 2~6 个字符的代号上没有阅读成本，
+   但绝不能拿它去标中文标签（大写破坏词形、字距拖慢扫读，
+   而"新投递""沉默率"这种词每天要看几十遍）。中文标签用 .label。 */
+.refno {
+  font: 400 11px/1 var(--mono);
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+
+/* 中文标签：无衬线、常规大小写、不加字距。数字下面的说明文字都用它。 */
+.label {
+  font: 400 12.5px/1.4 var(--sans);
+  color: var(--ink-2);
+}
+
+/* 手写批注。只用于"批注"这一种语义——正文永远不用手写体。
+   没有可靠的中文手写体可从 Google Fonts 拿，所以中文批注用
+   稍斜的宋体 + 红色来表达"这是笔迹"，不硬套一个假手写。 */
+/* 手写批注。
+   ⚠️ 不用斜体：浏览器对中文没有真正的斜体字形，只能做"伪斜"——
+   把字形整体倾斜，笔画粗细全乱，比正体难读得多。
+   笔迹感靠"红色 + 无衬线 + 紧凑"表达就够，不靠倾斜。 */
+.annot {
+  font: 400 13.5px/1.5 var(--sans);
+  color: var(--red);
+}
+.annot-blue { color: var(--blue); }
+
+/* 荧光笔划线。用 background 而不是 mark 的默认样式，
+   两端稍微溢出、上下不满，像笔头扫过去。 */
+.hl {
+  background: linear-gradient(
+    to bottom,
+    transparent 12%,
+    var(--hl) 12%,
+    var(--hl) 88%,
+    transparent 88%
+  );
+  padding: 0 2px;
+  margin: 0 -2px;
+  box-decoration-break: clone;
+}
+
+/* ── 表格：档案登记册 ────────────────────────────────────
+   行线细、表头双线、数字等宽对齐。像纸质登记表而不是 data grid。 */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+th {
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-align: left;
+  padding: 0 10px 7px;
+  border-bottom: 2px solid var(--ink);
+  white-space: nowrap;
+}
+td {
+  padding: 8px 10px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: middle;
+}
+tbody tr:last-child td { border-bottom: 0; }
+/* 隔行极淡底色，像账簿的横向引导线 */
+tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--paper-2) 55%, transparent); }
+
+/* ── 表单控件：打字机填表 ────────────────────────────────
+   下划线式输入框而不是圆角框——像在纸质表格的横线上填字。 */
+input,
+select,
+textarea {
+  font: 13px/1.5 var(--sans);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper-2) 70%, transparent);
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  padding: 6px 8px;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+  background: var(--paper);
+  box-shadow: 0 0 0 2px var(--blue-soft);
+}
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+::placeholder { color: var(--ink-3); opacity: 0.75; }
+
+/* 按钮：墨线框。主按钮是实心墨块，次要是线框——不用蓝色填充 */
+button {
+  font: 600 13px/1 var(--sans);
+  letter-spacing: 0.01em;
+  border: 1.5px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 8px 13px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+button:hover:not(:disabled) { box-shadow: 2px 2px 0 var(--rule-strong); transform: translate(-1px, -1px); }
+button:active:not(:disabled) { transform: translate(0, 0); box-shadow: none; }
+button.ghost {
+  background: transparent;
+  color: var(--ink-2);
+  border-color: var(--rule-strong);
+}
+button.ghost:hover:not(:disabled) { color: var(--ink); border-color: var(--ink); }
+button.danger { background: transparent; color: var(--red); border-color: var(--red); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+code {
+  font: 12px var(--mono);
+  background: color-mix(in srgb, var(--paper-2) 80%, transparent);
+  border: 1px solid var(--rule);
+  padding: 0 4px;
+  border-radius: 1px;
+}
+
+/* 折痕：一条极淡的竖线，模拟纸被对折过。只在宽版面用。 */
+.crease {
+  position: relative;
+}
+.crease::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(120, 100, 70, 0.1) 12%,
+    rgba(120, 100, 70, 0.1) 88%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+  .sticky, .stamp { transform: none; }
+}
+
+/* "一张纸从文件夹里抽出来"。280ms，短。
+   刻意只做一个方向的位移 + 微小旋转回正，不做弹跳——
+   纸是有重量的，弹跳属于气球。 */
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) rotate(-0.8deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+}
+.slide-in {
+  animation: slide-in 280ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+/* JD 匹配分析的「结论 | 原文」两栏。
+   窄屏下必须堆叠——两栏各 400px 以下的话，原文每行只能放几个字，
+   而这一页的全部价值就在于原文读得顺。 */
+.dossier {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .dossier { grid-template-columns: minmax(0, 1fr); }
+}

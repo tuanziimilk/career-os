@@ -167,6 +167,7 @@ export const localSource: DataSource = {
 
   upsertJob: () => Promise.resolve(unsupportedWrite("local")),
   appendStatus: () => Promise.resolve(unsupportedWrite("local")),
+  deleteJob: () => Promise.resolve(unsupportedWrite("local")),
   setFailReason: () => Promise.resolve(unsupportedWrite("local")),
   setLearningStatus: () => Promise.resolve(unsupportedWrite("local")),
   setQuestionResult: () => Promise.resolve(unsupportedWrite("local")),

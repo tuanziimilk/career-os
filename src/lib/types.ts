@@ -111,6 +111,10 @@ export interface DataSource {
   upsertJob?(job: Partial<JobRecord> & { key: string }): Promise<WriteResult>;
   /** 追加一次状态变更，带时间戳——只在状态真的变了时候才应该调用它 */
   appendStatus?(jobKey: string, status: Status, at?: string): Promise<WriteResult>;
+  /** 删掉一条投递记录。
+   *  ⚠️ 实现必须同时写一条云端删除墓碑（career_deleted_jds）——
+   *  否则插件下次同步会把这条重新 upsert 回来，记录复活。 */
+  deleteJob?(jobKey: string): Promise<WriteResult>;
   /** 标注/修改挂掉原因 */
   setFailReason?(jobKey: string, reason: string): Promise<WriteResult>;
   /** 学习模块状态：未读/在读/已懂/能空手讲 */

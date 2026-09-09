@@ -273,3 +273,36 @@ $$;
 -- 按薪资排序/筛选是看板的主要用法，建个索引
 create index if not exists idx_career_jds_salary
   on career_jds (user_id, salary_min desc nulls last);
+
+-- ============================================================
+-- 删除墓碑（三端同步的关键）
+-- ============================================================
+-- 为什么删除需要一张表：三个地方都能删（插件 / 工作台 / 直接改库），
+-- 而"云端没有这条了"和"这条从来没同步过"在数据上长得一模一样。
+-- 如果靠差异推断，插件下次同步就会把工作台刚删掉的记录重新 upsert 回来——
+-- 记录复活，而且你不会发现。
+--
+-- 所以删除必须被**正面记录**：谁删的不重要，重要的是"这个 job_key 在
+-- deleted_at 这一刻被删了"。各端同步时读这张表，把本地对应记录清掉。
+--
+-- ⚠️ deleted_at 不只是审计信息，它是**判断"删完又重新采集"的唯一依据**：
+--    本地记录的采集时间比墓碑晚 → 说明是重新采的，墓碑作废；
+--    早于墓碑 → 说明是该被删掉的旧记录。
+--    没有这个比较，你删掉一个岗位后再也无法重新采集它。
+create table if not exists career_deleted_jds (
+  user_id    uuid not null references auth.users(id) default auth.uid(),
+  job_key    text not null,
+  deleted_at timestamptz not null default now(),
+  -- 删除来源，纯给人看：排查"这条怎么没了"时有用
+  deleted_by text,
+  primary key (user_id, job_key)
+);
+alter table career_deleted_jds enable row level security;
+
+drop policy if exists "own rows only" on career_deleted_jds;
+create policy "own rows only" on career_deleted_jds
+  for all
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+grant select, insert, update, delete on career_deleted_jds to authenticated;

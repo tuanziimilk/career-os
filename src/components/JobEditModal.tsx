@@ -30,9 +30,37 @@ export function JobEditModal({ source, job, onClose, onSaved }: Props) {
   const [status, setStatus] = useState<Status>(job?.status || "");
   const [failReason, setFailReason] = useState(job?.failReason || "");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
   const writable = source.kind === "supabase";
+
+  /** 删除。确认框必须带岗位名和公司——这是不可逆操作，
+   *  只写"确定删除吗"防不住看错行。 */
+  async function handleDelete() {
+    if (!job) return;
+    const label = job.title || "这条";
+    const co = job.company ? `（${job.company}）` : "";
+    if (
+      !window.confirm(
+        `删除「${label}」${co}？\n\n` +
+          "会从云端删掉这条记录和它的状态历史，并记一条删除标记，\n" +
+          "这样 jd-insight 扩展下次同步不会把它推回来。\n\n" +
+          "这个操作不可撤销。"
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    setError("");
+    const res = await source.deleteJob?.(job.key);
+    setDeleting(false);
+    if (!res?.ok) {
+      setError(res?.reason || "删除失败。");
+      return;
+    }
+    onSaved(); // 复用同一个回调：关闭弹窗 + 重新拉列表
+  }
 
   async function handleSave() {
     if (!writable) {
@@ -193,11 +221,25 @@ export function JobEditModal({ source, job, onClose, onSaved }: Props) {
           <p style={{ color: "var(--stop)", fontSize: 12.5, marginTop: 10 }}>{error}</p>
         )}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 18, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ background: "transparent", border: "1px solid var(--rule)", color: "var(--ink2)" }}>
+        <div style={{ display: "flex", gap: 8, marginTop: 18, alignItems: "center" }}>
+          {/* 删除放在编辑框里、和保存隔开，不放列表每一行。
+              列表里每行一个删除按钮太容易误点，而这是不可逆操作。
+              新增模式下没有可删的东西，所以只在编辑已有记录时出现。 */}
+          {!isNew && (
+            <button
+              className="danger"
+              onClick={handleDelete}
+              disabled={!writable || saving || deleting}
+              title="从云端删除这条记录，并记一条删除标记（防止插件下次同步把它推回来）"
+              style={{ marginRight: "auto" }}
+            >
+              {deleting ? "删除中…" : "删除"}
+            </button>
+          )}
+          <button onClick={onClose} style={{ background: "transparent", border: "1px solid var(--rule-strong)", color: "var(--ink-2)" }}>
             取消
           </button>
-          <button onClick={handleSave} disabled={!writable || saving}>
+          <button onClick={handleSave} disabled={!writable || saving || deleting}>
             {saving ? "保存中…" : "保存"}
           </button>
         </div>

@@ -351,6 +351,7 @@ export const demoSource: DataSource = {
   // 页面层拿到 { ok:false, reason } 后应直接展示 reason，不是静默忽略。
   upsertJob: noWrite,
   appendStatus: noWrite,
+  deleteJob: noWrite,
   setFailReason: noWrite,
   setLearningStatus: noWrite,
   setQuestionResult: noWrite,

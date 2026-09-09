@@ -289,6 +289,34 @@ export const supabaseSource: DataSource = {
     return ok();
   },
 
+  /* 删除。顺序刻意是「先写墓碑、再删记录」：
+     如果先删记录、写墓碑时断网，云端记录没了但墓碑也没有，
+     插件下次同步就会把它重新 upsert 回来——记录复活且没人知道。
+     反过来（墓碑写成功、删除失败）只是留下一条待删记录，
+     插件同步时会读到墓碑并清掉本地，下次工作台刷新也会重试删除。
+     两种失败方向里，选择更容易恢复的那一种。 */
+  async deleteJob(jobKey): Promise<WriteResult> {
+    if (!supabase) return fail("Supabase 未配置。");
+    const uid = await getUserId();
+    if (!uid) return NO_LOGIN;
+
+    const { error: eTomb } = await supabase
+      .from("career_deleted_jds")
+      .upsert(
+        { user_id: uid, job_key: jobKey, deleted_at: new Date().toISOString(), deleted_by: "工作台" },
+        { onConflict: "user_id,job_key" }
+      );
+    if (eTomb) return fail("写删除记录失败，没有执行删除：" + eTomb.message);
+
+    const [{ error: e1 }, { error: e2 }] = await Promise.all([
+      supabase.from("career_status_history").delete().eq("user_id", uid).eq("job_key", jobKey),
+      supabase.from("career_jds").delete().eq("user_id", uid).eq("job_key", jobKey),
+    ]);
+    if (e1) return fail("状态历史删除失败：" + e1.message);
+    if (e2) return fail(e2.message);
+    return ok();
+  },
+
   async setFailReason(jobKey, reason): Promise<WriteResult> {
     if (!supabase) return fail("Supabase 未配置。");
     const uid = await getUserId();

@@ -30,12 +30,30 @@ import { SKILLS, DICT_META, auditSkill } from "../lib/match";
    它有一套断言（scripts/eval-capability-note.mjs），而页面组件测不了。
    这里错一个字符会让所有等级静默变成「未评估」，值得单独钉住。 */
 import { composeNote, splitNote } from "../lib/capabilityNote";
+import thresholdsData from "../data/thresholds.json";
 
 /* 能力组从词典派生，不手写。
    ⚠️ 顺序刻意用词典里的出现顺序，而不是字母序或按 level 排 ——
    词典的排列本身就是"产品基本功 → AI 能力 → 行业"这个从通用到专门的顺序，
    照它排，读起来才是一条线索而不是一堆标签。 */
 const GROUPS: string[] = [...new Set(SKILLS.map((s) => s.group))];
+
+/* 阈值登记表。它是数据不是代码 —— 常量本身仍在各自源文件里，
+   由 scripts/check-thresholds.mjs 逐字核对两边一致（改一边不改另一边就让 build 失败）。 */
+interface ThresholdRow {
+  id: string;
+  name: string;
+  value: string;
+  file: string;
+  measured: "yes" | "partial" | "no";
+  rationale: string;
+  risk?: string;
+}
+const THRESHOLDS = (thresholdsData as { thresholds: ThresholdRow[] }).thresholds;
+const byMeasured = THRESHOLDS.reduce(
+  (acc, t) => ({ ...acc, [t.measured]: (acc[t.measured] || 0) + 1 }),
+  { yes: 0, partial: 0, no: 0 } as Record<string, number>
+);
 
 const LEVELS: { v: CapabilityLevel; label: string; hint: string }[] = [
   { v: "🟢", label: "🟢 有真实项目支撑", hint: "能在面试里讲出具体做了什么、结果是什么" },
@@ -385,6 +403,87 @@ export function Calibration({ source }: { source: DataSource }) {
             去用扩展采集几条，或切到演示数据源。
           </p>
         )}
+      </section>
+
+      {/* ── 阈值登记 ─────────────────────────────── */}
+      <section>
+        <div className="section-head">
+          Thresholds
+          <span className="n">
+            阈值登记 · {THRESHOLDS.length} 项 · 有正当依据 {byMeasured.yes} / 数字是拍的{" "}
+            {byMeasured.partial} / 没依据 {byMeasured.no}
+          </span>
+        </div>
+
+        <p style={{ fontSize: 13.5, color: "var(--ink-2)", maxWidth: "64ch", margin: "0 0 4px" }}>
+          这些数字决定「几条 JD 才算够」「哪句原文当依据」「覆盖率算出来是多少」。
+          <strong>它们绝大多数是我拍的</strong> —— 这一栏就是把「哪些有依据、哪些没有」摊开。
+        </p>
+        <p className="meta" style={{ margin: "0 0 14px" }}>
+          常量仍在各自源文件里（搬到一处会成为第四个会漂的副本）。
+          <code>npm run check:thresholds</code> 会逐字核对这张表和源码，
+          <strong>改了一边没改另一边就让 build 失败</strong> —— 所以这张表不是文档，是契约。
+        </p>
+
+        <div style={{ display: "grid", gap: 0, border: "1px solid var(--rule)" }}>
+          {THRESHOLDS.map((t, i) => (
+            <div
+              key={t.id}
+              style={{
+                padding: "10px 12px",
+                borderTop: i === 0 ? "none" : "1px solid var(--rule)",
+                background:
+                  t.measured === "no"
+                    ? "color-mix(in srgb, var(--warn) 7%, transparent)"
+                    : "transparent",
+              }}
+            >
+              <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 13 }}>{t.name}</strong>
+                <code style={{ fontSize: 12 }}>{t.value}</code>
+                <span
+                  className="stamp"
+                  style={{
+                    color:
+                      t.measured === "yes"
+                        ? "var(--ok)"
+                        : t.measured === "partial"
+                        ? "var(--ink-3)"
+                        : "var(--warn)",
+                  }}
+                >
+                  {t.measured === "yes" ? "有依据" : t.measured === "partial" ? "数字是拍的" : "没依据"}
+                </span>
+                <span className="meta" style={{ marginLeft: "auto" }}>
+                  {t.file}
+                </span>
+              </div>
+              <p style={{ margin: "5px 0 0", fontSize: 12.5, lineHeight: 1.65, color: "var(--ink-2)" }}>
+                {t.rationale}
+              </p>
+              {t.risk && (
+                <p
+                  style={{
+                    margin: "4px 0 0",
+                    fontSize: 12.5,
+                    lineHeight: 1.65,
+                    color: "var(--muted)",
+                    paddingLeft: 10,
+                    borderLeft: "2px solid var(--rule-strong)",
+                  }}
+                >
+                  改错了会怎样：{t.risk}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <p className="meta" style={{ marginTop: 10 }}>
+          ⚠️ 这张表只保证「登记的每一项都和源码一致」，保证不了「源码里所有阈值都登记了」——
+          那需要真解析源码。新加影响结论的常量时要手动补进
+          <code>src/data/thresholds.json</code>。
+        </p>
       </section>
 
       {/* ── 校准记录 ─────────────────────────────── */}

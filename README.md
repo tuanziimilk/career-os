@@ -1,5 +1,8 @@
 # Career OS · 求职工作台
 
+> 工程决策与取舍（含工作台与扩展**为什么分开**、共享物如何防分叉）写在扩展仓库的
+> [ARCHITECTURE.md](../jd-insight/ARCHITECTURE.md) —— 那份文档同时覆盖两边。
+
 一个人的求职数据中枢：投递漏斗、学习进度、面试题刷题。
 
 跟 [jd-insight](https://github.com/tuanziimilk/jd-insight)（浏览器扩展，负责采集 JD 和聊天式分析）是同一套体系的两个界面，各自做自己适合的事——**该统一的是数据契约，不是界面**。

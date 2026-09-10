@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run check:salary && tsc -b && vite build",
+    "build": "npm run check:shared && tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "check:salary": "node scripts/check-salary-sync.mjs"
+    "check:shared": "node scripts/check-shared.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

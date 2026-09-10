@@ -13,6 +13,7 @@ import { Overview } from "./pages/Overview";
 import { Pipeline } from "./pages/Pipeline";
 import { Learning } from "./pages/Learning";
 import { Practice } from "./pages/Practice";
+import { Resume } from "./pages/Resume";
 import { Match } from "./pages/Match";
 
 /* 编号是信息，不是装饰：它固定了模块顺序，也让"03 JD LAB"这种
@@ -23,6 +24,9 @@ const NAV = [
   { to: "/learning", no: "03", en: "LEARNING MAP", cn: "学习路线", end: false },
   { to: "/match", no: "04", en: "JD LAB", cn: "匹配分析", end: false },
   { to: "/practice", no: "05", en: "FIELD NOTES", cn: "面试题库", end: false },
+  // 06 排在最后不是因为最不重要，而是因为它是**一次性**的：
+  // 简历存好一次就不用天天来。日常高频的 01-05 排在前面。
+  { to: "/resume", no: "06", en: "RESUME", cn: "简历正文", end: false },
 ];
 
 export default function App() {
@@ -128,6 +132,7 @@ export default function App() {
             <Route path="/learning" element={<Learning source={source} />} />
             <Route path="/match" element={<Match source={source} />} />
             <Route path="/practice" element={<Practice source={source} />} />
+            <Route path="/resume" element={<Resume source={source} />} />
           </Routes>
         )}
       </main>

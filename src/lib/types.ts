@@ -44,6 +44,16 @@ export interface JobRecord {
   pageText?: string; // 整页兜底文本（career_jds.page_text）
 }
 
+/** 简历正文 + 它的元信息。
+ *  ⚠️ 只存一份纯文本，不存原始文件。理由：
+ *    - 匹配分析（match.ts）和扩展的「简历诊断」用的都是文本，存文件没人读
+ *    - 原始 PDF/Word 里有姓名电话，进了数据库就多一处要操心的地方
+ *  所以解析在浏览器里做完，只把文本传上去。 */
+export interface ResumeRecord {
+  text: string;
+  updatedAt: string;
+}
+
 export type CapabilityLevel = "🟢" | "🟡" | "🔴" | "";
 
 export interface CapabilityRow {
@@ -127,6 +137,11 @@ export interface DataSource {
   ): Promise<WriteResult>;
   /** 覆盖式更新能力自评 */
   updateCapabilities?(caps: CapabilityRow[]): Promise<WriteResult>;
+
+  /** 读简历正文。没有就返回 null（不是空串——"没存过"和"存了个空的"要能分开）。 */
+  getResume?(): Promise<ResumeRecord | null>;
+  /** 覆盖式保存简历正文。传空串等于清空。 */
+  setResume?(text: string): Promise<WriteResult>;
 }
 
 /** demo/local 源的写方法统一走这个兜底，文案在各处保持一致 */

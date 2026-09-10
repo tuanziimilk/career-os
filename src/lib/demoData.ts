@@ -14,6 +14,28 @@ import type {
   WriteResult,
 } from "./types";
 import { unsupportedWrite } from "./types";
+
+/** 演示用的假简历。刻意在结尾注明，避免被误当成真的。 */
+const DEMO_RESUME = `彭XX ｜ AI 产品经理 ｜ 上海 ｜ 5 年经验
+
+— 核心能力 —
+AI 产品 0→1 落地：独立完成需求定义、Skill 拆解、工作流编排到上线全流程
+知识库 / RAG 体系：与运营、算法协作沉淀业务数据资产，持续提升回答准确率
+效果评估：定义评测维度与量化指标，搭建自动化评测与 badcase 优化闭环
+跨团队协作：把业务方的模糊诉求转译为可执行需求，自主判断优先级
+
+— 经历 —
+2023.06–至今  某出行平台 · AI 产品经理
+  主导榜单业务 AI 中后台从 0 到 1，覆盖知识库、工作流、Skill 设计
+  在保障效果的同时把 token 成本降低约 40%，响应时间缩短一半
+
+2021.03–2023.05  某电商平台 · 产品经理（增长）
+  负责站内搜索与推荐的策略迭代，主导 SEO 体系搭建
+
+— 技能 —
+Prompt 工程 / SQL / PRD / 数据分析 / 英语可工作沟通
+
+（以上为演示数据，不是真实简历）`;
 import { parseSalary } from "./salary";
 
 const d = (daysAgo: number, hh = 11, mm = 30): string => {
@@ -355,5 +377,9 @@ export const demoSource: DataSource = {
   setFailReason: noWrite,
   setLearningStatus: noWrite,
   setQuestionResult: noWrite,
+  /* demo 模式给一份**假**简历：这一页空着的话看不出它长什么样，
+   * 而 demo 数据正好是给截图和演示用的（真数字不进 demo）。 */
+  getResume: () => delay({ text: DEMO_RESUME, updatedAt: new Date().toISOString() }, 120),
+  setResume: () => delay(unsupportedWrite("demo"), 0),
   updateCapabilities: noWrite,
 };

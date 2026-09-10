@@ -165,6 +165,10 @@ export const localSource: DataSource = {
   // 本地备份文件里只有 JD，没有学习活动记录——返回空，界面显示"还没有记录"
   getActivityDays: () => Promise.resolve([]),
 
+  // 本地文件源是只读的：简历读不到（那份 JSON 里没有它），也不能写。
+  // 返回 null 而不是空串——界面要能区分"没存过"和"存了个空的"。
+  getResume: () => Promise.resolve(null),
+  setResume: () => Promise.resolve(unsupportedWrite("local")),
   upsertJob: () => Promise.resolve(unsupportedWrite("local")),
   appendStatus: () => Promise.resolve(unsupportedWrite("local")),
   deleteJob: () => Promise.resolve(unsupportedWrite("local")),

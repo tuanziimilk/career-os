@@ -20,6 +20,7 @@ import type {
   Status,
   StatusEvent,
   WriteResult,
+  ResumeRecord,
 } from "./types";
 
 interface JdRow {
@@ -365,6 +366,35 @@ export const supabaseSource: DataSource = {
     if (error) return fail(error.message);
     await logActivity("question");
     return ok();
+  },
+
+  async getResume(): Promise<ResumeRecord | null> {
+    if (!supabase) return null;
+    const uid = await getUserId();
+    if (!uid) return null;
+    const { data, error } = await supabase
+      .from("career_profile")
+      .select("resume_text, updated_at")
+      .eq("user_id", uid)
+      .maybeSingle();
+    reportReadError("career_profile", error);
+    // 分清三种情况：没有这一行 / 有行但 resume_text 是 null / 有正文。
+    // 前两种都返回 null，界面显示"还没上传"；不要把它当成空简历。
+    if (!data || data.resume_text == null) return null;
+    return { text: String(data.resume_text), updatedAt: String(data.updated_at || "") };
+  },
+
+  async setResume(text: string): Promise<WriteResult> {
+    if (!supabase) return fail("Supabase 未配置。");
+    const uid = await getUserId();
+    if (!uid) return NO_LOGIN;
+    // updated_at 必须显式写：表上的 default now() 只在 insert 时生效，
+    // upsert 走到 update 分支时不会自己刷新，那样"上次更新"永远是第一次的时间。
+    const { error } = await supabase.from("career_profile").upsert(
+      { user_id: uid, resume_text: text, updated_at: new Date().toISOString() },
+      { onConflict: "user_id" }
+    );
+    return error ? fail(error.message) : ok();
   },
 
   async updateCapabilities(caps: CapabilityRow[]): Promise<WriteResult> {

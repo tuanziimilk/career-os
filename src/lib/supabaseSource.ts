@@ -85,7 +85,7 @@ async function logActivity(kind: "learning" | "question"): Promise<void> {
   await supabase.rpc("career_log_activity", { kind });
 }
 
-const NO_LOGIN = fail("还没登录云端数据源——点右上角「切换数据源」发送登录链接。");
+const NO_LOGIN = fail("还没登录云端数据源——点右上角「切换数据源」，用邮箱和密码登录。");
 
 export const supabaseSource: DataSource = {
   kind: "supabase",

@@ -47,7 +47,13 @@ export default function App() {
       }}
     >
       {/* ── 档案目录 ─────────────────────────────────── */}
-      <aside style={{ paddingTop: 8, position: "sticky", top: 26 }}>
+      {/* ⚠️ zIndex 不能省。position:sticky 会**自成层叠上下文**，于是
+          「切换数据源」那个浮层里写的 z-index:10 出不了这个 aside——
+          而 main 是 position:relative 且在 DOM 里排在 aside 之后，
+          两者 z-index 都是 auto 时按文档顺序绘制，main 就盖在浮层上。
+          实际跑起来才看到：浮层上半截被主内容区吃掉了。
+          给 aside 一个 z-index，整棵子树才在 main 之上。 */}
+      <aside style={{ paddingTop: 8, position: "sticky", top: 26, zIndex: 20 }}>
         <div
           className="refno"
           style={{ padding: "0 0 8px 2px", color: "var(--desk-ink-2)", borderBottom: "2px solid var(--desk-rule)", marginBottom: 2 }}

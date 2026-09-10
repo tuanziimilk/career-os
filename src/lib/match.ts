@@ -129,10 +129,27 @@ function evidenceScore(sentence: string, indexRatio: number): number {
   return n;
 }
 
+/* 中英之间的空格归一化。**这段必须和 jd-insight/extension/lib/gap.js 同步**
+ * ——那边是同一套命中判定的移植版，两边任何一处改了另一处必须跟着改。
+ *
+ * ⚠️ 实测出来的漏判：词典里有 pattern `B端`，而真实 JD 写的是「B 端产品经验」，
+ * 中间一个空格，中文 pattern 走 includes() 就整条漏掉。
+ * 「B 端」「C 端」「AI 产品」「3 年」在中文技术写作里都常带这个空格。
+ *
+ * 规则：空格两侧只要有一侧是汉字或中文标点就删掉；纯拉丁词之间的空格保留
+ * ——否则 `function call` 被压成 `functioncall`，等于把一个漏判换成另一个。
+ */
+const CJK_CLASS = "[\\p{Script=Han}\\u3000-\\u303F\\uFF00-\\uFFEF]";
+const CJK_SPACE = new RegExp(`(?<=${CJK_CLASS})\\s+|\\s+(?=${CJK_CLASS})`, "gu");
+function squash(text: string): string {
+  return String(text ?? "").replace(CJK_SPACE, "");
+}
+
 /** 关键词是否在句子里出现。英文按词边界，中文直接包含。 */
 function hits(sentence: string, pattern: string): boolean {
   const isAscii = /^[\x20-\x7e]+$/.test(pattern);
-  if (!isAscii) return sentence.includes(pattern);
+  // 句子和 pattern 走同一次归一化，否则带空格的 pattern 反而匹配不上
+  if (!isAscii) return squash(sentence).includes(squash(pattern));
   // 英文缩写要防误伤：SQL 不该被 "MySQLite" 命中，API 不该被 "RAPID" 命中
   const esc = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp("(^|[^A-Za-z0-9])" + esc + "($|[^A-Za-z0-9])", "i").test(sentence);

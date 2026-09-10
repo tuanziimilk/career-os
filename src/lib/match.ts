@@ -34,8 +34,91 @@ interface GateDef {
   kind: string;
   patterns: string[];
 }
-const SKILLS = (skillsData as { skills: SkillDef[] }).skills;
+/* ⚠️ SKILLS 从内部常量改成导出，是给 07 校准台用的。
+   那一页要做两件事：把 15 个能力组名**从词典派生**（而不是让人手填 —— 词典
+   要求 capabilities 的组名和这里的 group 逐字一致，手填一个错字就静默少算一整组），
+   以及把 26 项的权重/patterns 摊开显示。
+   导出只读引用，不给它可写入口 —— 词典仍然只能改 JSON 源码。 */
+export const SKILLS = (skillsData as { skills: SkillDef[] }).skills;
 const GATES = (skillsData as { gates: GateDef[] }).gates;
+
+/** 词典的元信息，给校准台显示「适用方向」和「改过什么、为什么」 */
+export const DICT_META = {
+  domainLabel:
+    (skillsData as { domain?: { label?: string } }).domain?.label || "（未声明）",
+  calibration: (skillsData as { calibration?: string[] }).calibration || [],
+};
+
+/* 正文门槛。**这两个数和 jd-insight/extension/lib/gap.js 必须一致**
+   （那边是同一套判定的移植版）。
+   120：低于这个长度不可能包含一份完整的岗位要求，硬算出来的覆盖率只会反映
+   "我们没抓到内容"而不是"这岗位不匹配"。真实详情页正文 400~1200 字。
+   200：退回整页文本时门槛要更高，因为 pageText 里混着导航和推荐位。 */
+const MIN_BODY = 120;
+const MIN_PAGETEXT = 200;
+
+/** 取能用来分析的正文；取不到返回 null，让调用方决定是拒答还是跳过 */
+function usableText(job: JobRecord): string | null {
+  const body = (job.body || "").trim();
+  if (body.length >= MIN_BODY) return body;
+  const page = (job.pageText || "").trim();
+  if (page.length >= MIN_PAGETEXT) return page;
+  return null;
+}
+
+export interface SkillAudit {
+  /** 命中了几条 JD */
+  hitCount: number;
+  /** 分母：有正文、能分析的 JD 条数（不是全部 JD） */
+  analyzable: number;
+  /** 真正命中过的 pattern —— 用来区分「验证过的词」和「还只是猜的词」 */
+  matchedPatterns: string[];
+  /** 命中的原句，最多 3 条 */
+  evidence: { company: string; sentence: string }[];
+}
+
+/**
+ * 拿真实采集的 JD 给某一项技能做体检。
+ *
+ * ⚠️ 刻意复用 `sentences()` / `hits()` / `usableText` 这套已有判定，
+ * 不另写一份匹配逻辑 —— 体检的意义就是"显示线上真实行为"，
+ * 一旦另写一套，它显示的就是另一个算法的行为，那比不显示更误导。
+ */
+export function auditSkill(skillId: string, jobs: JobRecord[]): SkillAudit {
+  const sk = SKILLS.find((s) => s.id === skillId);
+  const out: SkillAudit = { hitCount: 0, analyzable: 0, matchedPatterns: [], evidence: [] };
+  if (!sk) return out;
+  const matched = new Set<string>();
+
+  for (const job of jobs) {
+    const text = usableText(job);
+    if (!text) continue; // 没正文的不算进分母，和 analyzeMatch 的口径一致
+    out.analyzable += 1;
+
+    let best = -Infinity;
+    let sentence = "";
+    for (const p of sk.patterns) {
+      const sents = sentences(text);
+      sents.forEach((x, i) => {
+        if (!hits(x, p)) return;
+        matched.add(p);
+        const sc = evidenceScore(x, sents.length > 1 ? i / (sents.length - 1) : 1);
+        if (sc > best) {
+          best = sc;
+          sentence = x.slice(0, 140);
+        }
+      });
+    }
+    if (sentence) {
+      out.hitCount += 1;
+      if (out.evidence.length < 3) {
+        out.evidence.push({ company: job.company || "—", sentence });
+      }
+    }
+  }
+  out.matchedPatterns = [...matched];
+  return out;
+}
 
 /** 我的水平 → 覆盖权重。未评估是 null，不是 0——"没自评过"和"不会"是两件事。 */
 const LEVEL_SCORE: Record<CapabilityLevel, number | null> = {
@@ -195,25 +278,20 @@ export function analyzeMatch(job: JobRecord, caps: CapabilityRow[]): MatchResult
   const body = (job.body || "").trim();
   const page = (job.pageText || "").trim();
 
-  // 规则 2：没有正文就不给分。
-  // 阈值 120 字：低于这个长度不可能包含一份完整的岗位要求，
-  // 硬算出来的覆盖率只会反映"我们没抓到内容"，而不是"这岗位不匹配"。
-  let text = body;
-  let source: "body" | "pageText" = "body";
-  if (text.length < 120) {
-    if (page.length >= 200) {
-      text = page;
-      source = "pageText";
-    } else {
-      return {
-        ok: false,
-        reason:
-          body.length || page.length
-            ? `JD 正文只抓到 ${Math.max(body.length, page.length)} 个字，不足以分析。去这个岗位的详情页重新按 Alt+S 存一次。`
-            : "这条记录没有 JD 正文。列表页采集经常抓不到正文——去详情页重新存一次。",
-      };
-    }
+  // 规则 2：没有正文就不给分。判定抽成 usableText()，因为 auditSkill()
+  // 必须用**完全一样**的口径算分母——两处各写一遍阈值必然漂。
+  const picked = usableText(job);
+  if (!picked) {
+    return {
+      ok: false,
+      reason:
+        body.length || page.length
+          ? `JD 正文只抓到 ${Math.max(body.length, page.length)} 个字，不足以分析。去这个岗位的详情页重新按 Alt+S 存一次。`
+          : "这条记录没有 JD 正文。列表页采集经常抓不到正文——去详情页重新存一次。",
+    };
   }
+  const text = picked;
+  const source: "body" | "pageText" = body.length >= MIN_BODY ? "body" : "pageText";
 
   const levelOf = new Map<string, CapabilityLevel>();
   caps.forEach((c) => levelOf.set(c.group, c.level));

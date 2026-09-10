@@ -15,6 +15,7 @@ import { Learning } from "./pages/Learning";
 import { Practice } from "./pages/Practice";
 import { Resume } from "./pages/Resume";
 import { Match } from "./pages/Match";
+import { Calibration } from "./pages/Calibration";
 
 /* 编号是信息，不是装饰：它固定了模块顺序，也让"03 JD LAB"这种
    说法在你和我之间成为稳定的指代。所以编号跟着模块走，不跟着排序走。 */
@@ -27,6 +28,11 @@ const NAV = [
   // 06 排在最后不是因为最不重要，而是因为它是**一次性**的：
   // 简历存好一次就不用天天来。日常高频的 01-05 排在前面。
   { to: "/resume", no: "06", en: "RESUME", cn: "简历正文", end: false },
+  /* 07 校准台：能力自评编辑 + 词典体检。
+     排最后是因为它是**维护入口**而不是日常动作 —— 但它不是可选的：
+     04 匹配分析的唯一输入就是这里填的自评，在此之前那份自评
+     没有任何编辑界面（updateCapabilities 实现完整却零调用者）。 */
+  { to: "/calibration", no: "07", en: "CALIBRATION", cn: "校准台", end: false },
 ];
 
 export default function App() {
@@ -139,6 +145,7 @@ export default function App() {
             <Route path="/match" element={<Match source={source} />} />
             <Route path="/practice" element={<Practice source={source} />} />
             <Route path="/resume" element={<Resume source={source} />} />
+            <Route path="/calibration" element={<Calibration source={source} />} />
           </Routes>
         )}
       </main>

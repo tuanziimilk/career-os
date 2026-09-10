@@ -9,6 +9,7 @@
  *   · 硬性门槛折进分数——学历不符是闸门不是扣分
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { CapabilityLevel, CapabilityRow, DataSource, JobRecord } from "../lib/types";
 import { analyzeMatch, coverageLabel, type SkillHit } from "../lib/match";
 
@@ -64,9 +65,16 @@ export function Match({ source }: { source: DataSource }) {
           这一页要拿「我的能力自评」去比对 JD 要求，但当前数据源里没有任何能力自评，
           所以什么都算不出来。
         </p>
+        {/* ⚠️ 这里原来只说「自评存在 career_profile.capabilities」——
+            也就是告诉你数据在哪张表，但**不给你填的地方**（那时确实没有）。
+            07 校准台补上了那个入口，所以这句话现在必须指过去。 */}
+        <p style={{ fontSize: 14, marginTop: 10 }}>
+          去 <Link to="/calibration" style={{ color: "var(--blue)" }}>07 校准台</Link> 填一次
+          —— 那里的能力组名是从技能词典派生的，不用手打。
+        </p>
         <p className="meta" style={{ marginTop: 8 }}>
-          能力自评存在 <code>career_profile.capabilities</code>。
-          切换到云端数据源，或先在演示数据里看这一页长什么样。
+          自评存在 <code>career_profile.capabilities</code>，需要云端数据源才能保存。
+          也可以先切到演示数据看这一页长什么样。
         </p>
       </section>
     );

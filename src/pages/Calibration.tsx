@@ -79,6 +79,19 @@ export function Calibration({ source }: { source: DataSource }) {
 
   const writable = source.kind === "supabase";
 
+  async function reload() {
+    const [caps, js] = await Promise.all([source.getCapabilities(), source.getJobs()]);
+    const d: Record<string, Draft> = {};
+    GROUPS.forEach((g) => (d[g] = { level: "", text: "" }));
+    caps.forEach((c) => {
+      const { level, text } = splitNote(c.note);
+      d[c.group] = { level, text };
+    });
+    setDraft(d);
+    setSaved(JSON.parse(JSON.stringify(d)));
+    setJobs(js);
+  }
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -157,6 +170,11 @@ export function Calibration({ source }: { source: DataSource }) {
     } else {
       setMsg(res.reason || "保存失败");
       setMsgBad(true);
+      /* ⚠️ 自评是**整个 jsonb 覆盖**写的，所以冲突在这一页后果最重：
+         另一端新填了一组，这一页保存就会把那一组整个抹掉。
+         必须重新读，而且要把用户正在编的草稿也换成云端的值 ——
+         留着旧草稿等于把"再点一次保存"变成"再覆盖一次"。 */
+      if (res.conflict) await reload();
     }
   }
 

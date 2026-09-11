@@ -8,6 +8,7 @@
 // （由 Obsidian 笔记单向导入），数据库只存"状态"。这里的 getLearning/getQuestions
 // 因此只返回状态半张脸，由调用方（页面层）拿内容数据去拼完整对象。
 import { supabase, supabaseConfigured } from "./supabaseClient";
+import { RowVersions, writeVersioned, type VersionedDb } from "./rowVersion";
 import type {
   ActivityDay,
   CapabilityRow,
@@ -76,6 +77,59 @@ function ok(): WriteResult {
 
 function fail(reason: string): WriteResult {
   return { ok: false, reason };
+}
+
+/* 多端并发写的冲突检测。机制和它防的场景写在 lib/rowVersion.ts ——
+ * 那里把数据库访问收窄成一个两方法的接口，好让这套逻辑能在没有真实云端的
+ * 情况下被测到（eval-row-version.mjs）。这里只提供 Supabase 的适配层。
+ */
+const versions = new RowVersions();
+
+const supabaseVersionedDb: VersionedDb = {
+  async updateIfVersion({ table, idCol, id, uid, expectedUpdatedAt, patch }) {
+    if (!supabase) return { rows: [], error: "Supabase 未配置。" };
+    const { data, error } = await supabase
+      .from(table)
+      .update(patch)
+      .eq("user_id", uid)
+      .eq(idCol, id)
+      .eq("updated_at", expectedUpdatedAt)
+      .select("updated_at");
+    if (error) return { rows: [], error: error.message };
+    return { rows: (data as { updated_at?: string }[]) || [] };
+  },
+  async upsertRow({ table, idCol, id, uid, patch }) {
+    if (!supabase) return { rows: [], error: "Supabase 未配置。" };
+    const { data, error } = await supabase
+      .from(table)
+      .upsert({ user_id: uid, [idCol]: id, ...patch }, { onConflict: `user_id,${idCol}` })
+      .select("updated_at");
+    if (error) return { rows: [], error: error.message };
+    return { rows: (data as { updated_at?: string }[]) || [] };
+  },
+};
+
+function remember(table: string, id: string, updatedAt: unknown): void {
+  versions.remember(table, id, updatedAt);
+}
+
+async function writeGuarded(
+  table: string,
+  idCol: string,
+  id: string,
+  patch: Record<string, unknown>,
+  uid: string
+): Promise<WriteResult> {
+  const r = await writeVersioned({
+    db: supabaseVersionedDb,
+    versions,
+    table,
+    idCol,
+    id,
+    uid,
+    patch,
+  });
+  return r.conflict ? { ok: false, reason: r.reason, conflict: true } : r.ok ? ok() : fail(r.reason || "保存失败。");
 }
 
 /** 记一次"今天动过了"。故意不把它的失败往上抛——
@@ -147,10 +201,11 @@ export const supabaseSource: DataSource = {
     if (!uid) return [];
     const { data, error } = await supabase
       .from("career_profile")
-      .select("capabilities")
+      .select("capabilities, updated_at")
       .eq("user_id", uid)
       .maybeSingle();
     reportReadError("career_profile", error);
+    remember("career_profile", uid, data?.updated_at);
     const caps = (data?.capabilities as Record<string, string>) || {};
     // ⚠️ 排序必须在这儿做：capabilities 存成 jsonb，Postgres 不保证键序
     //    （实测读回来 To C 产品🔴 排在第一个）。而这份列表的阅读顺序有意义——
@@ -172,10 +227,13 @@ export const supabaseSource: DataSource = {
     if (!uid) return [];
     const { data, error } = await supabase
       .from("career_learning_progress")
-      .select("module_id, status, note")
+      .select("module_id, status, note, updated_at")
       .eq("user_id", uid)
       .order("module_id");
     reportReadError("career_learning_progress", error);
+    ((data as { module_id: string; updated_at?: string }[]) || []).forEach((r) =>
+      remember("career_learning_progress", r.module_id, r.updated_at)
+    );
     return ((data as { module_id: string; status: string; note: string | null }[]) || []).map(
       (r) => ({
         id: r.module_id,
@@ -193,9 +251,12 @@ export const supabaseSource: DataSource = {
     if (!uid) return [];
     const { data, error } = await supabase
       .from("career_question_practice")
-      .select("question_id, result, wrong_count")
+      .select("question_id, result, wrong_count, updated_at")
       .eq("user_id", uid);
     reportReadError("career_question_practice", error);
+    ((data as { question_id: string; updated_at?: string }[]) || []).forEach((r) =>
+      remember("career_question_practice", r.question_id, r.updated_at)
+    );
     return ((data as { question_id: string; result: string; wrong_count: number }[]) || []).map(
       (r) => ({
         id: r.question_id,
@@ -334,13 +395,14 @@ export const supabaseSource: DataSource = {
     if (!supabase) return fail("Supabase 未配置。");
     const uid = await getUserId();
     if (!uid) return NO_LOGIN;
-    const { error } = await supabase
-      .from("career_learning_progress")
-      .upsert(
-        { user_id: uid, module_id: moduleId, status },
-        { onConflict: "user_id,module_id" }
-      );
-    if (error) return fail(error.message);
+    const res = await writeGuarded(
+      "career_learning_progress",
+      "module_id",
+      moduleId,
+      { status },
+      uid
+    );
+    if (!res.ok) return res;
     await logActivity("learning");
     return ok();
   },
@@ -354,16 +416,22 @@ export const supabaseSource: DataSource = {
     const uid = await getUserId();
     if (!uid) return NO_LOGIN;
     const patch: Record<string, unknown> = {
-      user_id: uid,
-      question_id: questionId,
       result,
       last_practiced_at: new Date().toISOString(),
     };
     if (wrongCount != null) patch.wrong_count = wrongCount;
-    const { error } = await supabase
-      .from("career_question_practice")
-      .upsert(patch, { onConflict: "user_id,question_id" });
-    if (error) return fail(error.message);
+    /* ⚠️ wrong_count 是上层算好再传下来的（读到的值 + 1）。
+       也就是说它**天生就是"基于我读到的那一版"**，
+       冲突检测在这里不是加分项而是必需的：另一端也答错一次的话，
+       两边各自算出"1"，无条件写入的结果是错题数只记了一次。 */
+    const res = await writeGuarded(
+      "career_question_practice",
+      "question_id",
+      questionId,
+      patch,
+      uid
+    );
+    if (!res.ok) return res;
     await logActivity("question");
     return ok();
   },
@@ -380,6 +448,7 @@ export const supabaseSource: DataSource = {
     reportReadError("career_profile", error);
     // 分清三种情况：没有这一行 / 有行但 resume_text 是 null / 有正文。
     // 前两种都返回 null，界面显示"还没上传"；不要把它当成空简历。
+    remember("career_profile", uid, data?.updated_at);
     if (!data || data.resume_text == null) return null;
     return { text: String(data.resume_text), updatedAt: String(data.updated_at || "") };
   },
@@ -388,13 +457,9 @@ export const supabaseSource: DataSource = {
     if (!supabase) return fail("Supabase 未配置。");
     const uid = await getUserId();
     if (!uid) return NO_LOGIN;
-    // updated_at 必须显式写：表上的 default now() 只在 insert 时生效，
-    // upsert 走到 update 分支时不会自己刷新，那样"上次更新"永远是第一次的时间。
-    const { error } = await supabase.from("career_profile").upsert(
-      { user_id: uid, resume_text: text, updated_at: new Date().toISOString() },
-      { onConflict: "user_id" }
-    );
-    return error ? fail(error.message) : ok();
+    // updated_at 由 writeVersioned 显式写（原因见 rowVersion.ts）——
+    // 表上的 default now() 只在 insert 时生效，upsert 走 update 分支时不会刷新。
+    return writeGuarded("career_profile", "user_id", uid, { resume_text: text }, uid);
   },
 
   async updateCapabilities(caps: CapabilityRow[]): Promise<WriteResult> {
@@ -403,10 +468,11 @@ export const supabaseSource: DataSource = {
     if (!uid) return NO_LOGIN;
     const obj: Record<string, string> = {};
     caps.forEach((c) => (obj[c.group] = c.note));
-    const { error } = await supabase
-      .from("career_profile")
-      .upsert({ user_id: uid, capabilities: obj }, { onConflict: "user_id" });
-    return error ? fail(error.message) : ok();
+    /* ⚠️ career_profile 是**一人一行**，简历正文和能力自评在同一行。
+       所以另一端改了自评之后，这一端保存简历也会报冲突（反之亦然）。
+       这不是精确到列的检测 —— 宁可多问你一次，也不要把对方的改动覆盖掉。 */
+    return writeGuarded(
+      "career_profile", "user_id", uid, { capabilities: obj }, uid);
   },
 };
 

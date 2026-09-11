@@ -9,6 +9,8 @@ import { Link } from "react-router-dom";
 import type { ActivityDay, DataSource, JobRecord, LearningModule } from "../lib/types";
 import { computeFunnel, needsFollowUp } from "../lib/funnel";
 import { computeStreak, weekSummary } from "../lib/activity";
+import modulesContent from "../data/modules.json";
+import { learningProgress } from "../lib/learningProgress";
 import { Stamp, statusStamp } from "../components/Stamp";
 
 export function Overview({ source }: { source: DataSource }) {
@@ -25,7 +27,13 @@ export function Overview({ source }: { source: DataSource }) {
 
   const funnel = computeFunnel(jobs);
   const followUps = needsFollowUp(jobs);
-  const doneCount = modules.filter((m) => m.status === "能空手讲").length;
+  /* ⚠️ 这个指标的算法在 lib/learningProgress.ts，两页共用一份。
+     原来首页和学习页各算一遍，分母不一样（1/2 vs 1/9），
+     那边的注释写了为什么以及错在哪。 */
+  const learn = learningProgress(
+    (modulesContent as { id: string }[]).map((m) => m.id),
+    modules
+  );
   const streak = computeStreak(activity || []);
   const week = weekSummary(jobs);
 
@@ -187,7 +195,7 @@ export function Overview({ source }: { source: DataSource }) {
             to="/learning"
             no="LM"
             en="Learning Map"
-            big={modules.length ? `${doneCount}/${modules.length}` : "—"}
+            big={learn.total ? `${learn.done}/${learn.total}` : "—"}
             unit="能空手讲"
             note={
               activity == null

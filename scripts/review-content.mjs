@@ -114,6 +114,32 @@ if (hits.length) {
 const { mark, result } = diffAgainstMark(digests);
 const pending = totalPending(result);
 
+/* ⚠️ 签章必须来自**一个真的人在终端里敲的命令**。
+ *
+ * 这一条是被一次真实事故逼出来的：我为了验证这道闸门会不会拦，
+ * 自己跑了一次 `--sign`，然后忘了删掉那个签章文件 ——
+ * 于是 build 变绿了，而"绿"的含义是"有人看过内容了"，**那是假的**。
+ * 我在同一轮的报告里还写着"build 是红的，等你签"。
+ *
+ * 光靠自觉不行，所以做成结构性的：**没有 TTY 就不许签**。
+ * 我（以及任何 CI、任何脚本）跑起来 stdin 都不是 TTY，签不了；
+ * 你在终端里 `npm run content:review` 就是 TTY，正常签。
+ *
+ * 留了 `--force` 逃生口，因为将来真可能有正当的自动化场景 ——
+ * 但它必须是显式写出来的，不会因为"忘了"而发生。
+ */
+if (SIGN && !process.stdin.isTTY && !process.argv.includes("--force")) {
+  console.error("✗ 拒绝签章：当前不是交互式终端。");
+  console.error("");
+  console.error("  签章的含义是「**有人**看过这一版内容了」。");
+  console.error("  脚本、CI、或者 AI 助手替你签，这道闸门就只剩一道手续 ——");
+  console.error("  而它挡的是「自评/公司名进了公开仓库」，那件事不可逆。");
+  console.error("");
+  console.error("  请在你自己的终端里跑：npm run content:review");
+  console.error("  （确实需要自动化的话，显式加 --force）");
+  process.exit(1);
+}
+
 if (SIGN) {
   const counts = {
     modules: modules.length,

@@ -45,6 +45,15 @@ export function Resume({ source }: Props) {
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  /* 抽出来是为了冲突时能再读一次 —— 冲突的处理方式就是"看云端现在是什么"。 */
+  async function load() {
+    setLoading(true);
+    const r = (await source.getResume?.()) ?? null;
+    setCloud(r);
+    setText(r?.text || "");
+    setLoading(false);
+  }
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -96,6 +105,7 @@ export function Resume({ source }: Props) {
     setSaving(false);
     if (!res?.ok) {
       setError(res?.reason || "保存失败。");
+      if (res?.conflict) await load();
       return;
     }
     setCloud({ text, updatedAt: new Date().toISOString() });

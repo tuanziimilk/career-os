@@ -66,6 +66,9 @@ export function Practice({ source }: { source: DataSource }) {
     const res = await source.setQuestionResult?.(id, result, nextWrong);
     if (!res?.ok) {
       setError(res?.reason || "保存失败。");
+      /* 这里比学习页更要紧：nextWrong 是"我读到的错题数 + 1"。
+         不重新读的话，下一次点击又会从同一个旧基数 +1，错题数永远差一截。 */
+      if (res?.conflict) await load();
       return;
     }
     setProgress((p) => ({ ...p, [id]: { result, wrongCount: nextWrong } }));

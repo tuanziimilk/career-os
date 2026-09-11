@@ -98,6 +98,13 @@ export interface ActivityDay {
 export interface WriteResult {
   ok: boolean;
   reason?: string;
+  /** 写失败是因为**云端那一行在你读到它之后被改过**（另一台设备、另一个标签页、
+   *  或者扩展那边）。和其他失败要分开，因为处理方式不一样：
+   *  别的失败是重试，这个是**先看看别人改成了什么**，否则重试就是覆盖掉对方。
+   *
+   *  ⚠️ 只在"这一端读过这一行"的前提下能检测到。没读过就没有可比的版本号，
+   *  那种情况退回原来的行为（最后写的赢）—— 见 supabaseSource 的 rowVersions 注释。 */
+  conflict?: true;
 }
 
 /** 数据源必须提供的统一接口——三种实现互换，渲染层无感。

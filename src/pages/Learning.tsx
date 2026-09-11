@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DataSource, LearningModule, ModuleStatus } from "../lib/types";
 import modulesContent from "../data/modules.json";
+import { learningProgress } from "../lib/learningProgress";
 import { RevealCard } from "../components/RevealCard";
 import { Stamp, type StampTone } from "../components/Stamp";
 
@@ -95,10 +96,17 @@ export function Learning({ source }: { source: DataSource }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
-  const doneCount = useMemo(
-    () => CONTENT.filter((m) => statusByModule[m.id] === "能空手讲").length,
+  /* 和首页共用一份算法（lib/learningProgress.ts）——
+     它们原来各算一遍，分母还不一样。 */
+  const learn = useMemo(
+    () =>
+      learningProgress(
+        CONTENT.map((m) => m.id),
+        Object.entries(statusByModule).map(([id, status]) => ({ id, status }))
+      ),
     [statusByModule]
   );
+  const doneCount = learn.done;
   const totalCards = useMemo(
     () => CONTENT.reduce((n, m) => n + m.cards.length, 0),
     []
@@ -117,6 +125,10 @@ export function Learning({ source }: { source: DataSource }) {
     setSaving(null);
     if (!res?.ok) {
       setError(res?.reason || "保存失败。");
+      /* 冲突意味着云端那一行已经不是我读到的那个了。
+         必须重新读 —— 否则界面上还挂着旧状态，而你下一次点击是从旧状态往下循环，
+         等于把别人的改动又覆盖一遍。 */
+      if (res?.conflict) await load();
       return;
     }
     setStatusByModule((s) => ({ ...s, [moduleId]: next }));
@@ -138,7 +150,7 @@ export function Learning({ source }: { source: DataSource }) {
             </span>
             <span className="meta" style={{ fontSize: 13 }}>
               {" "}
-              / {CONTENT.length}
+              / {learn.total}
             </span>
             <div className="label" style={{ marginTop: 3 }}>
               Modules learned · 能空手讲
@@ -152,7 +164,7 @@ export function Learning({ source }: { source: DataSource }) {
                 height: 12,
                 borderBottom: "1.5px solid var(--ink)",
                 background: `repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px ${
-                  100 / CONTENT.length
+                  100 / learn.total
                 }%)`,
               }}
             >
@@ -162,7 +174,7 @@ export function Learning({ source }: { source: DataSource }) {
                   left: 0,
                   bottom: 0,
                   height: 5,
-                  width: `${(doneCount / (CONTENT.length || 1)) * 100}%`,
+                  width: `${learn.ratio * 100}%`,
                   background: "var(--ok)",
                 }}
               />

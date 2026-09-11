@@ -114,6 +114,78 @@ function parseGenerated(text) {
   }
 }
 
+/* ------------------------------------- 3. 漏斗常量：两端各写一份，无权威方 */
+/* 这是 MAINTENANCE 里记了很久的「没有闸门的三处重复」的第 2、3 条：
+ *   · FAIL_BUCKETS 在 pipeline.js 和 funnel.ts 各写一份
+ *   · silentDays = 14 在两处各写死
+ *
+ * 和上面两份共享物不同，这组**没有"权威方 + 复制"的结构** ——
+ * funnel.ts 是 pipeline.js 的 TS 移植，两边都是手写的正本。
+ * 所以这里不能 --fix（不知道该按哪边改），只能报出来让人决定。
+ *
+ * ⚠️ silentDays 用**行为**比，不比字面量：
+ * 它在两边都是默认参数（`silentDays = 14` / `opts.silentDays || 14`），
+ * 抠字面量要写一个会随写法变化而失效的正则。
+ * 构造"沉默了正好 14 天"和"13 天"两条记录，看两边判定是否一致 ——
+ * 这样连"其中一边把 >= 改成 >"这种改动也能抓到，而比字面量抓不到。
+ */
+{
+  const ext = await import("../../jd-insight/extension/lib/pipeline.js");
+  const web = await import("../src/lib/funnel.ts");
+
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const pairs = [
+    ["FAIL_BUCKETS", ext.FAIL_BUCKETS, web.FAIL_BUCKETS],
+    ["TERMINAL", ext.TERMINAL, web.TERMINAL],
+    ["STATUS_CYCLE", ext.STATUS_CYCLE, web.STATUS_CYCLE],
+    ["STAGES 的 id 顺序", ext.STAGES.map((s) => s.id), web.STAGES.map((s) => s.id)],
+    [
+      "STAGES 的 optional 标记",
+      ext.STAGES.map((s) => !!s.optional),
+      web.STAGES.map((s) => !!s.optional),
+    ],
+  ];
+  for (const [name, a, b] of pairs) {
+    if (eq(a, b)) {
+      console.log(`✓ 漏斗常量 ${name} 两端一致（${Array.isArray(a) ? a.length + " 项" : ""}）`);
+    } else {
+      problems.push(
+        `漏斗常量 ${name} 两端不一致（两边都是手写正本，没有权威方，--fix 修不了）。\n` +
+          `    扩展 jd-insight/extension/lib/pipeline.js：${JSON.stringify(a)}\n` +
+          `    工作台 src/lib/funnel.ts：${JSON.stringify(b)}\n` +
+          `    决定哪边对，然后手改另一边。`
+      );
+    }
+  }
+
+  /* silentDays 的行为比对 */
+  const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const mk = (n) => [
+    {
+      jobKey: "k",
+      title: "t",
+      status: "已投",
+      statusHistory: [{ status: "已投", at: daysAgo(n) }],
+    },
+  ];
+  const probe = [
+    [14, true, "沉默正好 14 天：两端都该算「该跟进」"],
+    [13, false, "沉默 13 天：两端都不该算"],
+  ];
+  for (const [days, want, label] of probe) {
+    const a = ext.needsFollowUp(mk(days)).length > 0;
+    const b = web.needsFollowUp(mk(days)).length > 0;
+    if (a === b && a === want) {
+      console.log(`✓ ${label}`);
+    } else {
+      problems.push(
+        `silentDays 的判定两端不一致或都不对：${label}\n` +
+          `    扩展：${a ? "算" : "不算"} · 工作台：${b ? "算" : "不算"} · 期望：${want ? "算" : "不算"}`
+      );
+    }
+  }
+}
+
 /* ------------------------------------------------------------------ */
 if (problems.length) {
   console.error("\n✗ 共享物校验未通过：\n");

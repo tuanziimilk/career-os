@@ -177,6 +177,29 @@ function excerpt(body) {
   return redact(clean).slice(0, CARD_EXCERPT_MAX);
 }
 
+/* Mermaid 图源单独抽出来，不走 excerpt。
+ *
+ * 原因：excerpt 会 ① 整段丢弃代码块 ② 截断到 600 字。M9 六张图正是
+ * 「脑图点亮」那一页的**唯一内容源**，被 ① 丢掉了，所以图一直没进工作台。
+ *
+ * ⚠️ 图源**绝不能截断** —— 半张 flowchart 是语法错误，渲染器只会给一个
+ * 报错框。所以这里既不截断也不压缩空行；工作台那边渲不下就滚动/折叠，
+ * 不在数据层解决显示问题。
+ *
+ * 仍然过一遍 redact：图里写的是 SEO Agent 母案例，现在没有公司名，
+ * 但「现在没有」不是「以后不会有」，脱敏是按路径挂的，不按内容挂。
+ */
+export function extractDiagrams(body) {
+  const out = [];
+  const pat = /```mermaid\r?\n([\s\S]*?)```/g;
+  let m;
+  while ((m = pat.exec(body)) !== null) {
+    const src = redact(m[1]).replace(/\s+$/, "");
+    if (src.trim()) out.push(src);
+  }
+  return out;
+}
+
 function parseModuleFile(moduleId, raw) {
   const text = redact(raw);
   // M9 用"图 N"切分，其余模块用顶级"## "切分
@@ -189,11 +212,16 @@ function parseModuleFile(moduleId, raw) {
 
   function push() {
     if (cur && cur.body.trim() && !isExcludedTitle(cur.title)) {
-      cards.push({
+      const diagrams = extractDiagrams(cur.body);
+      const card = {
         id: `${moduleId.toLowerCase()}-c${cards.length + 1}`,
         title: cur.title,
         excerpt: excerpt(cur.body),
-      });
+      };
+      // 没有图的卡片不写这个字段（占 85 张卡里的 79 张），省得 json 里
+      // 满屏空数组，也让"哪些卡有图"一眼能看出来。
+      if (diagrams.length) card.diagrams = diagrams;
+      cards.push(card);
     }
   }
 
@@ -247,8 +275,12 @@ function main() {
     }
     const cards = parseModuleFile(id, readFile(fp));
     modules.push({ id, title: MODULE_TITLES[id] || id, cards });
-    console.log(`  ${id} · ${MODULE_TITLES[id]}：${cards.length} 张卡片`);
+    const dia = cards.reduce((n, c) => n + (c.diagrams ? c.diagrams.length : 0), 0);
+    console.log(
+      `  ${id} · ${MODULE_TITLES[id]}：${cards.length} 张卡片` + (dia ? `，${dia} 张图` : "")
+    );
   }
+  guardDiagrams(modules);
   fs.writeFileSync(
     path.join(OUT_DIR, "modules.json"),
     JSON.stringify(modules, null, 2) + "\n",
@@ -282,6 +314,32 @@ function main() {
   console.log("   src/data/modules.json");
   console.log("   src/data/questions.json");
   console.log("   确认没有公司名/内部系统名/个人短板自评原文，再提交进仓库。");
+}
+
+/* M9 图源闸门。
+ *
+ * 和 guardShrink 是同一类闸门，防的也是同一个模式：**解析悄悄失效，脚本不报错**。
+ * 这里盯的是一个很窄但很关键的事实 —— M9 是全部九个模块里**唯一**有 mermaid 的
+ * （实测：M1~M8 加 M10 共 18 个代码块，mermaid 0 个），而那六张图是脑图页的
+ * 唯一内容源。所以只要 M9 在、图却是 0，就一定是出了问题：
+ * Obsidian 换了围栏写法、正则被改坏、或者有人把 diagrams 那段删了。
+ *
+ * ⚠️ 阈值写的是「至少 1 张」而不是「正好 6 张」：写死 6 会在我真的往 M9 加第七张图
+ * 或拆掉一张时误拦，而那是正常的编辑动作。一个会误报的闸门会被学会忽略。
+ * 从 6 掉到 1 这种"掉了但没掉光"的情形，靠下面打印的张数让人看见，不靠拦。
+ */
+function guardDiagrams(modules) {
+  const m9 = modules.find((m) => m.id === "M9");
+  if (!m9) return; // M9 文件不在（上面已经 warn 过），不是这道闸门的事
+  const n = m9.cards.reduce((s, c) => s + (c.diagrams ? c.diagrams.length : 0), 0);
+  if (n > 0) return;
+
+  console.error("\n✗ 拒绝写入 modules.json：M9 一张 mermaid 图都没解析出来。");
+  console.error("   M9 是唯一带 mermaid 的模块，那六张图是脑图页的唯一内容源。");
+  console.error("   常见原因：围栏写法变了（```mermaid 后面跟了语言别名或空格）、");
+  console.error("   extractDiagrams 的正则被改坏、或者 M9 文件本身被改过。");
+  console.error("   不拦的话，脑图页会变成一个空页面，而且不报错。");
+  process.exit(1);
 }
 
 /* 产出量骤降闸门。

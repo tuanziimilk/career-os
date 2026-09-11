@@ -17,6 +17,10 @@ interface ModuleCard {
   id: string;
   title: string;
   excerpt: string;
+  /* Mermaid 图源。只有 M9 的六张卡有（实测：其余八个模块的代码块里
+     一个 mermaid 都没有）。在导入脚本里单独抽出来、**不截断** ——
+     半张 flowchart 是语法错误。 */
+  diagrams?: string[];
 }
 interface ModuleContent {
   id: string;
@@ -36,6 +40,41 @@ const STATUS_STAMP: Record<ModuleStatus, { text: string; tone: StampTone }> = {
   已懂: { text: "UNDERSTOOD", tone: "blue" },
   能空手讲: { text: "LEARNED", tone: "ok" },
 };
+
+/* Mermaid 图源的展示。
+ *
+ * ⚠️ 这里**故意只显示图源文本，不渲染成图**。
+ * 渲染 mermaid 要装一个约 2MB 的依赖，而那个依赖该在哪装、图怎么布局、
+ * 「学完点亮」的交互长什么样，是脑图页（P4.1）要一起定的事。
+ * 先把图源从 Obsidian 搬进来（它在此之前被 excerpt 整段丢掉了），
+ * 页面上能看见它确实在，比先装一个库更要紧。
+ *
+ * 默认折叠：这六段每段 14~26 行，展开会把旁边的正文挤到看不见。
+ */
+function DiagramSource({ src }: { src: string }) {
+  const lines = src.split("\n").length;
+  return (
+    <details style={{ marginTop: 10 }}>
+      <summary className="meta" style={{ cursor: "pointer" }}>
+        图源（Mermaid，{lines} 行）—— 暂未渲染成图
+      </summary>
+      <pre
+        style={{
+          font: "11.5px/1.6 var(--mono)",
+          color: "var(--ink-2)",
+          background: "var(--paper-2)",
+          border: "1px solid var(--rule)",
+          borderRadius: 1,
+          padding: "10px 12px",
+          margin: "8px 0 0",
+          overflowX: "auto",
+        }}
+      >
+        {src}
+      </pre>
+    </details>
+  );
+}
 
 export function Learning({ source }: { source: DataSource }) {
   const [statusByModule, setStatusByModule] = useState<Record<string, ModuleStatus>>({});
@@ -250,6 +289,9 @@ export function Learning({ source }: { source: DataSource }) {
                       {mod.cards.map((c) => (
                         <RevealCard key={c.id} prompt={c.title}>
                           <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{c.excerpt}</p>
+                          {(c.diagrams || []).map((d, i) => (
+                            <DiagramSource key={i} src={d} />
+                          ))}
                         </RevealCard>
                       ))}
                     </div>

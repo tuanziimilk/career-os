@@ -12,6 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { scanLeaks, modulesToItems, questionsToItems, printLeaks } from "./leaks.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const KB_ROOT = path.resolve(__dirname, "../../career-knowledgebase");
@@ -26,6 +27,12 @@ const REDACT = [
   [/内部后台系统/g, "内部后台系统"],
   [/HD[- ]?AI[- ]?Center|内部 AI 数据平台/g, "内部 AI 数据平台"],
   [/内部 AI 数据平台/gi, "内部 AI 数据平台"],
+  /* 2026-09-11 随 M10 一起加的：**在投的目标公司名**。
+     M10 整篇是围绕一家具名公司的招聘文档写的（连它的岗位名、愿景原话都在里面）。
+     公开产物里出现"我正在准备投这家公司、这是我的话术"，性质和公司名脱敏是一样的 ——
+     只不过泄漏的是**求职意图**而不是前雇主信息。 */
+  [/某目标公司/gi, "某目标公司"],
+  [/某目标公司产品/gi, "某目标公司产品"],
 ];
 
 function redact(text) {
@@ -37,10 +44,67 @@ function redact(text) {
 // 首次运行时发现的真实案例：M8「我的现状自检（对着帖子四条打分）」
 // 里有"我的短板集中在……"这种自曝短板的句子——脱敏词典替换不了这种，
 // 只能整卡不收。
-const EXCLUDE_TITLE_PATTERNS = [/现状自检/, /短板/, /自我评估/];
+const EXCLUDE_TITLE_PATTERNS = [
+  /现状自检/,
+  /短板/,
+  /自我评估/,
+  /* 2026-09-11 随 M10 一起加。M10 的第 3、4 节不是"这个领域有什么知识"，
+     是**我要怎么跟这家公司说话** —— 里面有逐字的面试话术、承认自己没到的部分、
+     以及"投递时附上这个"的动作计划。这类东西进公开产物是最难挽回的一种泄漏：
+     面试官看到的不是你的作品，是你准备怎么应付他。
+
+     ⚠️ 这两条模式刻意写得很窄（`面试怎么说` / `写成作品`）。
+     光写 `/面试/` 会误伤一大片：九个模块里有 22 个标题带"面试"
+     （「面试高频问答」「面试高频对比」「术语中英对照（面试用）」），
+     那些是**正当的知识内容**。一个会误伤的排除规则等于把知识库删了一半。 */
+  /面试怎么说/,
+  /写成作品/,
+];
 
 function isExcludedTitle(title) {
   return EXCLUDE_TITLE_PATTERNS.some((p) => p.test(title));
+}
+
+/* 行级丢弃。
+ *
+ * ⚠️ 为什么需要「整卡排除」之外再来一层：M10 的第 1 节标题是
+ * 「逐条是什么」—— 一个**完全正当的知识标题**，正文里却夹着
+ * 「**和我的连接**：我的 Obsidian 双链库…」「这是我最真诚的切入点」
+ * 这种自述。按标题排除会把整节知识一起扔掉，不排除又会把自述带出去。
+ *
+ * 这些自述在原文里都有**明确的行首标记**（作者自己加的），所以按行丢是准的。
+ * 判据是标记，不是"看起来像自述" —— 后者只能靠猜。
+ *
+ * 这一层仍然不是最后一道。最后一道是 scanLeaks()：
+ * 它查的是**产物本身**，抓的是我在这三层里想漏的东西。
+ */
+const DROP_LINE_PATTERNS = [
+  /\*\*和我的连接\*\*/,
+  /\*\*和\s*\S+\s*的连接\*\*/, // 「和 某目标公司 的连接」这种
+  /我最真诚的切入点/,
+  /诚实承认没到的部分/,
+  /诚实边界/,
+  /* ⚠️ 这三条是**我自己 review 时抓出来的**，而且它抓的是一个
+     「脱敏看起来生效了、其实没有」的情形 —— 值得单独写下来：
+
+     REDACT 把公司名换成了「某目标公司」，那一行读起来是
+     「为什么 某目标公司 关心这些：他们的**愿景原话**是「提升每个人获得信息的质量」
+       「未来屏幕的交互界面由大模型实时生成、千人千面」」
+
+     名字没了，但**逐字的愿景原话还在** —— 那两句话随便一搜就能定位到是哪家公司。
+     替换词典对付得了名字，对付不了**引文指纹**。
+     所以凡是"引用某家公司自己的文件"的行，整行不要。 */
+  /愿景原话/,
+  /招聘文档原话|招聘文档本身/,
+  /招聘里有个岗位|招聘文档「/,
+  /潜台词/,
+];
+
+function dropLines(body) {
+  return body
+    .split("\n")
+    .filter((l) => !DROP_LINE_PATTERNS.some((p) => p.test(l)))
+    .join("\n");
 }
 
 /* ⚠️ 必须统一行尾，这是一个**已经潜伏着的静默故障**。
@@ -170,7 +234,7 @@ export function parseQuestions(raw) {
 const CARD_EXCERPT_MAX = 600;
 
 function excerpt(body) {
-  const clean = body
+  const clean = dropLines(body)
     .replace(/```[\s\S]*?```/g, "") // 代码块整段丢弃，避免截断在代码中间
     .replace(/\n{2,}/g, "\n")
     .trim();
@@ -248,6 +312,7 @@ const MODULE_TITLES = {
   M7: "数据分析",
   M8: "AI产品落地能力",
   M9: "Agent系统脑图",
+  M10: "前沿理念地图",
 };
 
 const MODULE_FILES = {
@@ -260,6 +325,16 @@ const MODULE_FILES = {
   M7: "M7-数据分析.md",
   M8: "M8-AI产品落地能力.md",
   M9: "M9-Agent系统脑图.md",
+  /* M10 是本轮（P1.3）才纳入的，而它**不是九个模块那样的知识笔记**：
+     整篇是围绕一家具名公司的招聘文档写的战术文档 —— 目标公司名、岗位名、
+     逐字面试话术、自己承认没到的部分、"投递时附上这个"的动作计划都在里面。
+
+     所以纳入方式不是"加一行文件名"，而是三层处理一起上：
+       ① REDACT 抹掉公司名/产品名
+       ② EXCLUDE_TITLE_PATTERNS 整节扔掉第 3 节（面试怎么说）、第 4 节（写成作品）
+       ③ DROP_LINE_PATTERNS 行级丢掉「和我的连接」这类自述
+     然后由 scanLeaks() 对着**产物**兜最后一道。 */
+  M10: "M10-前沿理念地图.md",
 };
 
 function main() {
@@ -281,6 +356,13 @@ function main() {
     );
   }
   guardDiagrams(modules);
+
+  /* ⚠️ 脱敏闸门必须在**写任何文件之前**跑，而且要同时看两份产物。
+     原来的顺序是「写 modules.json → 再解析题目 → 写 questions.json」，
+     那样的话题库里发现泄漏时 modules.json 已经落盘了 —— 一次导入
+     产出一半，另一半是上一版，两份对不上是更难查的状态。 */
+  guardLeaks(modules, fs.existsSync(QUESTIONS_FILE) ? parseQuestions(readFile(QUESTIONS_FILE)) : []);
+
   fs.writeFileSync(
     path.join(OUT_DIR, "modules.json"),
     JSON.stringify(modules, null, 2) + "\n",
@@ -310,10 +392,47 @@ function main() {
     writeIdMigration(questions, oldQuestions);
   }
 
-  console.log("\n✅ 导入完成。接下来必须人工 review：");
-  console.log("   src/data/modules.json");
-  console.log("   src/data/questions.json");
-  console.log("   确认没有公司名/内部系统名/个人短板自评原文，再提交进仓库。");
+  reportReviewStatus();
+}
+
+/* 导入完成后的提示。
+ *
+ * 原来这里打的是三行「接下来必须人工 review」—— 而那条提示从写下来到现在
+ * 一直没有任何东西记录它有没有被执行过（包括我自己跑的那几次，一次都没看）。
+ * 现在改成指向真的会拦住 build 的那个机制。
+ */
+function reportReviewStatus() {
+  console.log("\n✅ 导入完成。");
+  console.log("   产物已经过脱敏三层过滤 + 词表扫描，但**机器只能查它认识的词**。");
+  console.log("   接下来：");
+  console.log("     npm run build          # 会列出具体哪几条内容变了、需要你看");
+  console.log("     npm run content:review # 看完之后签章");
+  console.log("   在签章之前 build 是红的 —— 这是故意的：");
+  console.log("   内容一旦提交进公开仓库，git 历史里就永远有了。");
+}
+
+/* 脱敏第二道防线。词表和扫描逻辑在 leaks.mjs，那里写了为什么需要第二道。
+ *
+ * 这里只负责一件事：**扫出东西就拒绝写文件**。
+ * 不是 warning —— warning 会被跳过，而这类内容一旦提交进公开仓库，
+ * git 历史里就永远有了，删不掉。宁可让导入失败。
+ */
+function guardLeaks(modules, questions) {
+  const hits = scanLeaks([
+    { name: "modules.json", items: modulesToItems(modules) },
+    { name: "questions.json", items: questionsToItems(questions) },
+  ]);
+  if (hits.length === 0) return;
+
+  console.error(`\n✗ 拒绝写入：产物里扫到 ${hits.length} 处可能的隐私泄漏。`);
+  printLeaks(hits);
+  console.error("\n   怎么办（按优先级）：");
+  console.error("   1. 改知识库原文 —— 把自评那句话挪到笔记的私人小节里");
+  console.error("   2. 给那一节换个会被 EXCLUDE_TITLE_PATTERNS 排除的标题");
+  console.error("   3. 确实是误报的话，改 leaks.mjs 的词表，并在那里写下理由");
+  console.error("\n   ⚠️ 不要靠「反正 excerpt 会截断」或「反正解析到那儿就 break 了」——");
+  console.error("      这两个都是已经查实的「靠运气挡住」，而运气会变。");
+  process.exit(1);
 }
 
 /* M9 图源闸门。

@@ -5,15 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run check:shared && npm run check:thresholds && npm run check:eol && npm run check:diagrams && npm run eval && tsc -b && vite build",
+    "build": "npm run check:shared && npm run check:thresholds && npm run check:eol && npm run check:diagrams && npm run check:content && npm run eval && tsc -b && vite build",
     "content:import": "node scripts/import-content.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "check:shared": "node scripts/check-shared.mjs",
-    "eval": "node scripts/eval-capability-note.mjs && node scripts/eval-question-ids.mjs",
+    "eval": "node scripts/eval-capability-note.mjs && node scripts/eval-question-ids.mjs && node scripts/eval-leaks.mjs",
     "check:thresholds": "node scripts/check-thresholds.mjs",
     "check:eol": "node scripts/check-line-endings.mjs",
-    "check:diagrams": "node scripts/check-diagrams.mjs"
+    "check:diagrams": "node scripts/check-diagrams.mjs",
+    "check:content": "node scripts/review-content.mjs",
+    "content:review": "node scripts/review-content.mjs --sign"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

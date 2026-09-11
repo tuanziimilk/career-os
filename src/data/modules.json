@@ -500,5 +500,26 @@
         ]
       }
     ]
+  },
+  {
+    "id": "M10",
+    "title": "前沿理念地图",
+    "cards": [
+      {
+        "id": "m10-c1",
+        "title": "★ 先看主线：这 7 条不是随机的",
+        "excerpt": "它们围绕同一个问题：\n> **「人如何借助工具更好地思考和理解世界，而 AI 怎样成为这个工具。」**\n四条支流：\n| 支流 | 属于谁 | 在问什么 |\n|---|---|---|\n| **思考的工具**（tools for thought） | Novak · Andy Matuschak · Ink & Switch · 3Blue1Brown | 知识怎么被表示、被理解、被记住？软件怎么成为思维的延伸？ |\n| **把世界形式化** | Stephen Wolfram · Palantir Ontology · Verse | 怎么把现实建模成可计算、可被程序（和 AI）操作的东西？ |\n| **智能本身是什么** | Transformer Circuits · Ilya · Jack Rae | 模型内部在干什么？为什么 scaling 有效？ |\n| **怎么造复杂系统 + AI 怎么参与造** | Ousterhout · VS Code / Unreal 源码 · Claude Code Leakage · Codex | 复杂度怎么管理？顶级 coding agent 怎么设计的？ |\n这正是 **tools for thought + 生成式界面** 的交汇点。\n> 面试里能说出这句解读，比报十个名字有用。\n---"
+      },
+      {
+        "id": "m10-c2",
+        "title": "逐条是什么（按对我的相关度排序，不按原文顺序）",
+        "excerpt": "### 🟢 A. 和我现有实践直接相通的（最该先看）\n**Joseph D. Novak —— 概念图（Concept Map）**\n- 康奈尔教育学家，概念图的发明人，理论根基是 Ausubel 的「**有意义学习**」：新知识必须挂到已有认知结构上才算学会。\n- 核心主张：知识是**命题网络**（概念 + 连接词 + 概念），不是列表。\n**Andy Matuschak —— 常青笔记 / 可塑工具**\n- 前 Apple、Khan Academy，现在独立做「记忆系统与思考工具」研究，自己的笔记全公开（notes.andymatuschak.org）。\n- 核心概念：**Evergreen notes（常青笔记）**——笔记要**原子化**（一条一个概念）、**概念导向**（不按来源归档）、**密集链接**、**随时间演进**而不是写完就扔。\n- 另一条线：**间隔重复用于概念性理解**（不只是背单词），代表文章《Why books don't work》——书读完记不住，因为读书假设\"看过 = 学会\"。\n**Ink & Switch —— 本地优先 / 可塑软件**\n- 独立研究实验室（Peter van Hardenberg 等），研究**本地优先软件（local-first）**：数据在你自己手里，同时又能实时协作。技术底座是 **CRDT / Automerge**"
+      },
+      {
+        "id": "m10-c3",
+        "title": "分层学习路径（按时间预算）",
+        "excerpt": "### 第一层 · 3~4 小时：建立诚实的基线\n目标：**被问到时能说出\"我在看什么、看到了什么\"**，而不是\"我知道这个名字\"。\n| 花多久 | 看什么 |\n|---|---|\n| 1 h | **3Blue1Brown 的 Transformer / Attention 系列**（顺带把 M5 八股真正看懂） |\n| 40 min | **Andy Matuschak 的 notes 主页**，重点看 evergreen notes 那几条 + 《Why books don't work》 |\n| 30 min | **Ink & Switch** 的 local-first 论文（读摘要 + 七条原则即可）+ 扫一眼 malleable software |\n| 30 min | **Ilya + Jack Rae 的「压缩即智能」**——看核心论点，不啃数学 |\n| 30 min | **Ousterhout 的核心概念**：深模块 / 战术 vs 战略编程（找一篇好的总结即可） |\n| 20 min | **Novak 概念图**：什么是有意义学习、概念图三要素 |\n### 第二层 · 一两周：真的读进去\n- 📕 **《A Philosophy of Software Design》** 通读一遍（最优先，最薄、最直接对话我的经验）\n- 🌐 **Andy Matus"
+      }
+    ]
   }
 ]

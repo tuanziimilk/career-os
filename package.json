@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "check:shared": "node scripts/check-shared.mjs",
-    "eval": "node scripts/eval-capability-note.mjs",
+    "eval": "node scripts/eval-capability-note.mjs && node scripts/eval-question-ids.mjs",
     "check:thresholds": "node scripts/check-thresholds.mjs"
   },
   "dependencies": {

@@ -176,6 +176,33 @@
       console.warn("[jd-insight] 薪资解析模块加载失败，会退回手填：", e && e.message);
     });
 
+  /* 去重键与合并规则（lib/jdMerge.js）。同样走动态 import。
+   *
+   * ⚠️ 这一个和上面两个的降级方式**相反**，必须分清：
+   * 薪资/字形加载不上，最坏结果是"少一个字段"，所以可以当没有这个功能继续跑。
+   * 而合并规则加载不上，退回去就是**整条替换** —— 那正是要修的那个 bug，
+   * 会把投递状态和状态轨迹静默清空。所以它加载失败时：
+   *   · 新记录照常插入（新的没有历史可丢）
+   *   · **已存在的记录拒绝更新**，并明确告诉你为什么
+   * 宁可这一次没存上，也不要存成一条被清空历史的记录。 */
+  /** 本地流转字段在 toast 里的中文名。键和 jdMerge 的 LOCAL_ONLY_FIELDS 对齐。 */
+  const LOCAL_FIELD_LABEL = {
+    status: "投递状态",
+    statusHistory: "状态轨迹",
+    failReason: "挂因",
+    intent: "意向",
+    salaryPending: "待补标记",
+  };
+
+  let MERGE = null;
+  const mergeReady = import(chrome.runtime.getURL("lib/jdMerge.js"))
+    .then((m) => {
+      MERGE = m;
+    })
+    .catch((e) => {
+      console.warn("[jd-insight] 合并模块加载失败，已存在的记录将拒绝更新：", e && e.message);
+    });
+
   /* 私有区字形还原（lib/glyphmap.js）。同样走动态 import。
    * 加载不上就当没有这个功能——薪资退回「待补」，不影响采集。 */
   let GLYPH = null;
@@ -798,7 +825,12 @@
 
     return {
       jobId,
-      key: jobId || location.href.split("?")[0], // 有 jobId 就用它，没有才退回 URL
+      /* 去重键。规则在 lib/jdMerge.js（带站点前缀；jobId 取不到时退回 URL）。
+         ⚠️ 刻意不在这里写一份「万一模块没加载就用裸 jobId」的兜底：
+         那会让同一个岗位在两次采集里拿到两个不同的键（`12345678` 和
+         `boss:12345678`），于是它变成两条记录 —— 而去重键分叉是比
+         "这次没存上"严重得多的故障。没有模块就不存，由 save() 报出来。 */
+      key: MERGE ? MERGE.jdKey(location.hostname, jobId, location.href) : "",
       url: jobId
         ? "https://www.zhipin.com/job_detail/" + jobId + ".html"
         : location.href.split("#")[0],
@@ -878,6 +910,7 @@
     // 等薪资解析模块就绪。文件很小、只加载一次，第二次点是同步返回。
     await salReady;
     await glyphReady;
+    await mergeReady;
 
     // 先保证面板里开着的就是鼠标正指着的那条。BOSS 列表页一落地就把第一条
     // 预加载进面板，只认面板会在「你在看第 7 条」时静默存下第 1 条。
@@ -894,12 +927,32 @@
       return;
     }
 
+    if (!rec.key) {
+      toast("合并模块没加载上 —— 没存。重新加载页面再试（避免键分叉）", "warn");
+      return;
+    }
+
     // 自动切过面板时再核对一次 id。waitPanelJob 已经等到 id 相符，
     // 这里是防「等到之后又被 BOSS 换掉」——一旦对不上宁可不存也不存错。
     if (panel.switched && panel.wantId && rec.jobId && rec.jobId !== panel.wantId) {
       toast("面板又被换掉了 —— 没存，手动点开「" + panel.label + "」再试", "warn");
       return;
     }
+
+    /* ⚠️ 上面那个守卫有个洞：`rec.jobId` 为空是 falsy，**整个条件被短路**，
+     * 于是"面板切过、但这次一个 id 都没抓到"这种最该拦的情况反而不拦。
+     * 而此时 key 已经退回 URL —— 在 BOSS 新版列表页上，
+     * 那意味着这一页所有岗位共享同一个键（v1.0 的致命 bug，见文件头）。
+     * 所以单独补一条：切过面板又没抓到 id，直接拒存。 */
+    if (panel.switched && panel.wantId && !rec.jobId) {
+      toast("面板切过但没抓到岗位 id —— 没存，手动点开「" + panel.label + "」再试", "warn");
+      return;
+    }
+
+    /* 降级键（没抓到 id、退回 URL）不是拒存，但必须**明说**。
+     * 独立详情页上退回 URL 是安全的（一个页面一个岗位）；
+     * 列表页上则会互相覆盖。而界面此前对这两种情况显示的是同一句「已存」。 */
+    const fallbackKey = MERGE.isFallbackKey(rec.key);
 
     // 到这一步还没薪资，说明标题、meta、面板属性里都没有明文。
     // 不再弹 prompt 打断采集——直接存，薪资留空并标记，之后在扩展弹窗里
@@ -917,8 +970,22 @@
       const jds = got.jds || [];
       const i = jds.findIndex((x) => x.key === rec.key);
       const isNew = i < 0;
+      /* ⚠️ 更新走**合并**，不是整条替换。
+       * `rec` 只有页面上有的字段；投递状态、状态轨迹、挂掉原因、你手点的意向、
+       * 你手填的薪资，全都不在里面。整条替换会把它们静默清空 ——
+       * 而且云端那份还活着（同步只推不拉状态），于是工作台显示「已投·进面」、
+       * 插件显示空白，两个界面各说各话。规则和理由都在 lib/jdMerge.js。 */
       if (isNew) jds.push(rec);
-      else jds[i] = rec;
+      else jds[i] = MERGE.mergeJd(jds[i], rec);
+      /* 合并之后哪些字段是"保下来的"，要在 toast 里说出来 ——
+         「已更新」这三个字看不出它到底动了什么。 */
+      const kept = isNew
+        ? [] // 保持数组类型：下面既取 .length 又 .map，混成字符串迟早出事
+        : MERGE.LOCAL_ONLY_FIELDS.filter((f) => {
+            const v = jds[i][f];
+            return v !== undefined && v !== "" && v !== false &&
+              !(Array.isArray(v) && v.length === 0);
+          });
       chrome.storage.local.set({ jds }, () => {
         if (chrome.runtime.lastError) {
           toast(isStale(chrome.runtime.lastError) ? STALE_MSG : "写本地存储失败", "warn");
@@ -936,9 +1003,19 @@
           : rec.salaryBlocked
           ? "　薪资待补" + (glyphNote ? "（" + glyphNote + "）" : "")
           : "　" + rec.salary + (rec.salarySource ? "（" + rec.salarySource + "）" : "");
+        /* 「这条是新的」还是「这条已经有了」，是采集时最该看清的一件事。
+           更新时把保住的本地字段列出来，让"没丢"这件事在界面上可见 ——
+           它此前的表现形式是"什么都不显示"，而那和"丢了"长得一模一样。 */
+        const keptNote =
+          isNew || !kept.length
+            ? ""
+            : "　已保留：" + kept.map((f) => LOCAL_FIELD_LABEL[f] || f).join("/");
+        // 降级键必须明说：列表页上它意味着这一页的岗位会互相覆盖
+        const keyNote = fallbackKey ? "　⚠️ 这条用网址做键，同页其他岗位可能互相覆盖" : "";
         toast(
-          (isNew ? "已存 · " : "已更新 · ") + label + co + sal + "　共 " + jds.length + " 条",
-          rec.salaryBlocked || !rec.company ? "warn" : isNew ? "ok" : "warn"
+          (isNew ? "已存 · " : "已更新 · ") + label + co + sal + keptNote + keyNote +
+            "　共 " + jds.length + " 条",
+          rec.salaryBlocked || !rec.company || fallbackKey ? "warn" : isNew ? "ok" : "warn"
         );
         btn.classList.add("jdc-saved");
         setTimeout(() => btn.classList.remove("jdc-saved"), 1200);

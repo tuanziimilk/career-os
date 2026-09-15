@@ -30,8 +30,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-/* 登记表里的 file 是**相对仓库组根目录**写的（career-web 和 jd-insight 是兄弟目录），
-   这样一眼能看出某个阈值属于哪一端。 */
+/* 登记表里的 file 是**相对仓库根目录**写的（extension/ 是扩展、web/ 是工作台、
+   analyzer/ 是 Python 侧），这样一眼能看出某个阈值属于哪一端。
+   2026-09-15 单仓库合并后这句话才名副其实——之前它指的是两个兄弟目录，
+   而那个「仓库组根目录」在 git 里并不存在。 */
 const ROOT = resolve(HERE, "..", "..");
 const REG = join(HERE, "..", "src", "data", "thresholds.json");
 

@@ -1,6 +1,6 @@
 /* 检查「按行解析文件」的地方有没有做行尾统一。
  *
- *     node career-web/scripts/check-line-endings.mjs
+ *     node web/scripts/check-line-endings.mjs
  *
  * ══════════ 为什么需要这道闸门 ══════════
  *
@@ -24,20 +24,20 @@
  * 这个脚本查的是**约定有没有被遵守**：凡是 Node 侧读文本文件再按行解析的，
  * 读取函数必须做行尾统一。
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, extname } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
 
-/* 要扫的范围：两个代码库的 JS/TS。刻意不扫 analyzer/（Python 天然免疫）
+/* 要扫的范围：扩展侧与工作台侧的 JS/TS。刻意不扫 analyzer/（Python 天然免疫）
    和 node_modules / dist。 */
 const SCAN_DIRS = [
-  join(ROOT, "career-web", "src"),
-  join(ROOT, "career-web", "scripts"),
-  join(ROOT, "jd-insight", "extension"),
-  join(ROOT, "jd-insight", "scripts"),
+  join(ROOT, "web", "src"),
+  join(ROOT, "web", "scripts"),
+  join(ROOT, "extension"),
+  join(ROOT, "scripts"),
 ];
 const EXTS = new Set([".js", ".mjs", ".ts", ".tsx"]);
 const SKIP_DIRS = new Set(["node_modules", "dist", "icons", ".git"]);
@@ -97,7 +97,17 @@ if (checked === 0) console.log("  （没有同时满足「读文件」和「按�
 /* 顺带报告知识库的行尾分布 —— 它是这个问题的源头，
    而「混着的」这个事实本身就值得每次看见。 */
 console.log("\n── 知识库 md 文件的行尾分布 ──");
-const KB = join(ROOT, "career-knowledgebase");
+/* ⚠️ 知识库**不在这个仓库里**，它是仓库的兄弟目录，而且从来没进过版本控制。
+   2026-09-15 单仓库合并时差点丢掉这一段：ROOT 从「两个仓库的公共父目录」
+   变成了「仓库根」，于是 join(ROOT, "career-knowledgebase") 指向了
+   <repo>/career-knowledgebase —— 不存在，而 walkMd 找不到目录就静默跳过，
+   这道闸门会照常打印「全部通过」。
+   而这一段恰恰是这个脚本存在的理由：那次静默清空 39 道题的 CRLF bug，
+   源头就是知识库里的 面试题库.md。所以两个位置都找一下，
+   仓库内优先（将来真把知识库纳进来时不用再改）。 */
+const KB = [join(ROOT, "career-knowledgebase"), join(ROOT, "..", "career-knowledgebase")].find(
+  (p) => existsSync(p)
+) || join(ROOT, "..", "career-knowledgebase");
 const md = [];
 (function walkMd(dir) {
   let entries;

@@ -57,4 +57,4 @@ console.log(`全部 ${results.length} 个脚本通过。`);
 console.log("");
 console.log("⚠️ 这些**全都是本地逻辑**。真调模型才能验的那几条（golden_questions 的");
 console.log("   C1/C2/C4 和 D1 的输出那一半）不在这里，也没有任何本地检查能替代 ——");
-console.log("   清单在 jd-insight/eval/golden_questions.md。");
+console.log("   清单在 eval/golden_questions.md。");

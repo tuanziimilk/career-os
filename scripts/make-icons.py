@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """从源 logo 生成扩展图标（16 / 32 / 48 / 128）。
 
-    python jd-insight/scripts/make-icons.py [源图路径]
+    python scripts/make-icons.py [源图路径]
 
-默认源图：jd-insight/assets/logo-source.png
+默认源图：assets/logo-source.png
 依赖：Pillow（只是开发期工具，不进扩展包）
 
 ──────────────────────────────────────────────────────────────

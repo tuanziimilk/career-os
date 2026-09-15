@@ -1,4 +1,4 @@
-/* 校验 career-web 和扩展之间"必须一致"的那几份东西。
+/* 校验工作台（web/）和扩展（extension/）之间"必须一致"的那几份东西。
  *
  * 为什么需要这个：扩展是零构建的纯 JS，工作台是 Vite+TS——两边没有共享包的
  * 机制。可选项只有「各写一份」和「一份权威 + 复制 + 机器校验」，前者的结局是
@@ -29,21 +29,31 @@ const root = resolve(here, "..");
 const FIX = process.argv.includes("--fix");
 
 const P = {
-  salaryExt: resolve(root, "../jd-insight/extension/lib/salary.js"),
+  salaryExt: resolve(root, "../extension/lib/salary.js"),
   salaryWeb: resolve(root, "src/lib/salary.js"),
   skillsWeb: resolve(root, "src/data/skills.json"),
-  skillsExt: resolve(root, "../jd-insight/extension/lib/skills.js"),
+  skillsExt: resolve(root, "../extension/lib/skills.js"),
 };
 
 const rel = (p) => relative(root, p).replace(/\\/g, "/");
 const problems = [];
 
-/* ---------------------------------------------- 1. salary.js 字节一致 */
+/* ---------------------------------------------- 1. salary.js 内容一致 */
+/* ⚠️ 比的是**规范化行尾之后**的内容，不是原始字节。2026-09-15 合并单仓库时
+   踩到：git 的 core.autocrlf=true 会在 checkout 时把 LF 写成 CRLF，于是
+   「刚被 checkout 出来的那一份」和「一直躺在工作区没被重新 checkout 的那一份」
+   字节必然不同，而内容一模一样。原来的 a.equals(b) 因此会在任何一次
+   fresh clone 之后随机翻脸 —— 它测的其实是"这两个文件有没有走过同一条
+   checkout 路径"，不是"内容一不一致"。
+   这也正是 check-line-endings.mjs 文件头定下的原则：不靠把文件都转成 LF，
+   而是在**读取层**兜住行尾差异。这里就是一个读取层。 */
+const lf = (buf) => buf.toString("utf8").split("\r\n").join("\n");
+const sameText = (x, y) => lf(x) === lf(y);
 {
   const a = readFileSync(P.salaryExt);
   const b = readFileSync(P.salaryWeb);
-  if (a.equals(b)) {
-    console.log(`✓ 薪资解析两端字节一致（${rel(P.salaryWeb)}）`);
+  if (sameText(a, b)) {
+    console.log(`✓ 薪资解析两端内容一致（${rel(P.salaryWeb)}）`);
   } else if (FIX) {
     writeFileSync(P.salaryWeb, a);
     console.log(`↻ 已按扩展那份重写 ${rel(P.salaryWeb)}`);
@@ -60,8 +70,8 @@ const problems = [];
 /* ------------------------------------- 2. skills：JSON → 生成 ESM 模块 */
 const SKILLS_HEADER = `/* 技能词典 —— **自动生成，不要手改这个文件。**
  *
- * 权威来源：career-web/src/data/skills.json（那边有校准记录 calibration）。
- * 由 career-web/scripts/check-shared.mjs 生成与校验：
+ * 权威来源：web/src/data/skills.json（那边有校准记录 calibration）。
+ * 由 web/scripts/check-shared.mjs 生成与校验：
  *   npm run check:shared           只校验，不一致就报错
  *   npm run check:shared -- --fix  按权威来源重新生成这个文件
  *
@@ -130,7 +140,7 @@ function parseGenerated(text) {
  * 这样连"其中一边把 >= 改成 >"这种改动也能抓到，而比字面量抓不到。
  */
 {
-  const ext = await import("../../jd-insight/extension/lib/pipeline.js");
+  const ext = await import("../../extension/lib/pipeline.js");
   const web = await import("../src/lib/funnel.ts");
 
   const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -151,7 +161,7 @@ function parseGenerated(text) {
     } else {
       problems.push(
         `漏斗常量 ${name} 两端不一致（两边都是手写正本，没有权威方，--fix 修不了）。\n` +
-          `    扩展 jd-insight/extension/lib/pipeline.js：${JSON.stringify(a)}\n` +
+          `    扩展 extension/lib/pipeline.js：${JSON.stringify(a)}\n` +
           `    工作台 src/lib/funnel.ts：${JSON.stringify(b)}\n` +
           `    决定哪边对，然后手改另一边。`
       );

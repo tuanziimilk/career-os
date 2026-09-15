@@ -116,7 +116,7 @@ export default function App() {
           Clipping tool:
           <br />
           <a
-            href="https://github.com/tuanziimilk/jd-insight"
+            href="https://github.com/tuanziimilk/career-os"
             target="_blank"
             rel="noreferrer"
             style={{ color: "var(--desk-link)" }}

@@ -16,6 +16,7 @@
  * 张数变化靠输出里打印出来让人看见，不靠拦。
  */
 import { readFileSync, existsSync } from "node:fs";
+import { requireRedactList, leakWords } from "./redact.mjs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { extractDiagrams } from "./import-content.mjs";
@@ -155,7 +156,11 @@ console.log("\n── 脱敏（图源是一条新开的、绕过 excerpt 的输�
 /* ⚠️ 这一条的理由：图源是**新增的**一条从 Obsidian 流向公开仓库的路径。
    现在 M9 六张图里确实没有公司名（人工看过），但"现在没有"不是"以后不会有" ——
    脱敏要按路径挂，不按当次内容挂。这里只查最硬的那几个词。 */
-const LEAK_WORDS = [/某跨境优惠券平台/, /内部后台系统/, /HD[- ]?AI[- ]?Center/i];
+/* 词表在 redact.local.mjs（不进版本库）。hardOnly 只取最硬的那几个 ——
+   图源是短文本，全量词表在这里意义不大，而漏一个前雇主全称是致命的。
+   2026-09-15 从这里搬走，原因见 redact.example.mjs 文件头。 */
+requireRedactList("图源泄漏扫描");
+const LEAK_WORDS = leakWords({ hardOnly: true }).map(([re]) => re);
 const LEAKY = diagrams.filter((d) => LEAK_WORDS.some((w) => w.test(d.src)));
 check(
   "图源里没有未脱敏的公司名/内部系统名",

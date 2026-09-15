@@ -34,3 +34,8 @@ Thumbs.db
 # 2026-09-15 就是这么把一份脱敏前的快照提交进公开仓库的。
 # 要看就现跑：node web/scripts/dump-content-review.mjs
 docs/内容review-待确认_*.md
+
+# 脱敏词表的真实内容。正则必须有明文才能匹配，所以这份明文不能进仓库 ——
+# 否则「真实词 → 替换词」的对照关系等于写在公开代码里，脱敏白做。
+# 结构和判据见可公开的 web/scripts/redact.example.mjs。
+web/scripts/redact.local.mjs

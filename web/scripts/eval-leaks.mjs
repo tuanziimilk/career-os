@@ -17,6 +17,7 @@
  * 那会把知识库删掉一大片，然后我就会学会忽略这个闸门的输出。
  */
 import { scanLeaks } from "./leaks.mjs";
+import { leakSamples } from "./redact.mjs";
 
 let fail = 0;
 function check(name, cond, detail) {
@@ -41,10 +42,13 @@ const MUST_FLAG = [
   ["M8:208", "结论：我的短板集中在“Agent 异常设计”这一条"],
   ["M10:54", "**和我的连接**：我的 Obsidian 双链库，本质就是概念图实践"],
   ["M10:58", "我是**先做后知道**的，这是我最真诚的切入点"],
-  ["M10:7", "M10 · 前沿理念地图（某目标公司 英雄帖清单解读）"],
   ["M10:31", "他们的愿景原话是「提升每个人获得信息的质量」"],
-  ["M4:9", "把 内部后台系统 重构用完整方法论讲一遍"],
 ];
+
+/* 带身份词的样本从 redact.local.mjs 取（不进版本库）——
+   证明词表有效的断言必须拿真实泄漏文本去撞，而那些文本里就带着要脱敏的词。 */
+MUST_FLAG.push(...leakSamples());
+
 for (const [where, text] of MUST_FLAG) {
   check(`${where}  「${text.slice(0, 22)}…」`, flagged(text));
 }

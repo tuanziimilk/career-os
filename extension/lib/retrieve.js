@@ -56,8 +56,8 @@ export function tokenize(text) {
 /**
  * 用共享的技能词典做查询扩展。
  *
- * skills.json 是 career-web 那份的原样复制（26 技能 / 15 组 / 280 个 pattern），
- * 一致性由 career-web 的 npm run check:shared 保证（生成 + 校验）。它本来只用于匹配分析，
+ * skills.json 是 web/ 那份的原样复制（26 技能 / 15 组 / 280 个 pattern），
+ * 一致性由 web/ 的 npm run check:shared 保证（生成 + 校验）。它本来只用于匹配分析，
  * 但它记录的正是"同一个能力的不同说法"——那就是查询扩展要的东西。
  *
  * 权重刻意压低（0.45）：扩展词是推测出来的，不能和用户真的打出来的词等权。

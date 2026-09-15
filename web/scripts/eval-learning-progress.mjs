@@ -1,6 +1,6 @@
 /* 学习进度指标的断言。
  *
- *     node career-web/scripts/eval-learning-progress.mjs
+ *     node web/scripts/eval-learning-progress.mjs
  *
  * ══════════ 钉的是什么 ══════════
  *

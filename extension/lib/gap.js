@@ -6,7 +6,7 @@
  * 所以这条边界不是写在 prompt 里靠模型自觉，而是写成代码——
  * 本文件全部是确定性计算，**一个字都不过模型**（见 §边界）。
  *
- * ─── 三条规则，继承 career-web/src/lib/match.ts ───
+ * ─── 三条规则，继承 web/src/lib/match.ts ───
  * 1. 每条命中必须带 JD 原文出处。指不回原文的结论不给。
  * 2. 正文没抓到的 JD 直接不参与统计，并如实报告跳过了几条。
  *    把只有标题的记录算进分母，会让所有能力的频次都被系统性低估。
@@ -14,7 +14,7 @@
  *    把"硕士"列进学习路数是荒谬的。
  *
  * ⚠️ 已知技术债：下面「命中判定」那一段（sentences / hits / evidenceScore）
- * 是 career-web/src/lib/match.ts 的移植。那边是 TS 且经过多轮调优，
+ * 是 web/src/lib/match.ts 的移植。那边是 TS 且经过多轮调优，
  * 这边是零构建 ESM，没法直接共用，于是成了第三个会漂的副本
  * （前两个 salary.js / skills.js 已由 check-shared.mjs 看住）。
  * 正解是把这段抽成一个纯 .js 放在一处、两边都 import，

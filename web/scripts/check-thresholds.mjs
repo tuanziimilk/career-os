@@ -1,6 +1,6 @@
 /* 阈值登记表 ↔ 源码 的一致性校验。
  *
- *     node career-web/scripts/check-thresholds.mjs
+ *     node web/scripts/check-thresholds.mjs
  *
  * ══════════ 为什么是「登记 + 校验」而不是「搬到一处」 ══════════
  *

@@ -1,6 +1,6 @@
 /* 脱敏词表的断言。
  *
- *     node career-web/scripts/eval-leaks.mjs
+ *     node web/scripts/eval-leaks.mjs
  *
  * ══════════ 为什么这个脚本必须存在 ══════════
  *

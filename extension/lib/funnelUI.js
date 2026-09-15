@@ -1,10 +1,10 @@
-/* 漏斗可视化：vanilla JS 版本的 career-web FunnelChart 组件。
+/* 漏斗可视化：vanilla JS 版本的 web/ FunnelChart 组件。
  *
  * pipeline.js 的 funnel()/needsFollowUp()/failBreakdown() 早就写好了——
  * 这是本次功能梳理最大的发现之一：数据模型和计算逻辑齐全，
  * 但从未在任何界面里被调用过。这个文件只负责"画出来"，不重算指标。
  *
- * 不能直接搬 career-web 的 React 组件（那边是 JSX + 构建管线），
+ * 不能直接搬 web/ 的 React 组件（那边是 JSX + 构建管线），
  * 扩展这边坚持零构建，所以用 DOM API 手写等价的 SVG，
  * 绘制逻辑（条形长度、颜色语义、文字排版）和 React 版保持一致。
  */

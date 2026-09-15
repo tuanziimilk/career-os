@@ -1,6 +1,6 @@
 /* 题目 id 稳定性的断言。
  *
- *     node career-web/scripts/eval-question-ids.mjs
+ *     node web/scripts/eval-question-ids.mjs
  *
  * ══════════ 这个脚本存在的唯一理由 ══════════
  *

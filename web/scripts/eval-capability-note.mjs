@@ -1,6 +1,6 @@
 /* 能力自评 note ↔ 等级 互转的断言。
  *
- *     node career-web/scripts/eval-capability-note.mjs
+ *     node web/scripts/eval-capability-note.mjs
  *
  * ⚠️ 为什么这么小的两个函数需要测：
  * `career_profile.capabilities` 存的是 `{ 组名: note }`，**等级没有单独的列** ——

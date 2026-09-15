@@ -1,7 +1,7 @@
 /* 「本版已 review」标记。
  *
- *     node career-web/scripts/review-content.mjs          # 查（build 会跑这个）
- *     node career-web/scripts/review-content.mjs --sign    # 签（看过了，记下来）
+ *     node web/scripts/review-content.mjs          # 查（build 会跑这个）
+ *     node web/scripts/review-content.mjs --sign    # 签（看过了，记下来）
  *
  * ══════════ 这份文件解决的问题 ══════════
  *

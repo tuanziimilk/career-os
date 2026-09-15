@@ -1,6 +1,6 @@
 /* 多端并发写冲突检测的断言。
  *
- *     node career-web/scripts/eval-row-version.mjs
+ *     node web/scripts/eval-row-version.mjs
  *
  * ══════════ 为什么要用假数据库 ══════════
  *

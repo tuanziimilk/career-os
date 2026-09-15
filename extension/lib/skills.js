@@ -1,7 +1,7 @@
 /* 技能词典 —— **自动生成，不要手改这个文件。**
  *
- * 权威来源：career-web/src/data/skills.json（那边有校准记录 calibration）。
- * 由 career-web/scripts/check-shared.mjs 生成与校验：
+ * 权威来源：web/src/data/skills.json（那边有校准记录 calibration）。
+ * 由 web/scripts/check-shared.mjs 生成与校验：
  *   npm run check:shared           只校验，不一致就报错
  *   npm run check:shared -- --fix  按权威来源重新生成这个文件
  *

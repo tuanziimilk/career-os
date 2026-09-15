@@ -1,6 +1,6 @@
 /* M9 脑图图源的产出闸门。
  *
- *     node career-web/scripts/check-diagrams.mjs
+ *     node web/scripts/check-diagrams.mjs
  *
  * ══════════ 和 import-content.mjs 里的 guardDiagrams 有什么不一样 ══════════
  *

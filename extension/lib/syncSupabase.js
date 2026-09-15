@@ -1,5 +1,5 @@
 /* 云端同步：把 chrome.storage.local.jds 里的记录（含 statusHistory）
- * upsert 进 career-web 用的同一套 Supabase 表（career_jds / career_status_history）。
+ * upsert 进 web/ 工作台用的同一套 Supabase 表（career_jds / career_status_history）。
  *
  * ⚠️ 架构取舍：不装 @supabase/supabase-js SDK，手写基于 fetch 的 REST 客户端。
  *   理由和 lib/llm.js 是同一个——扩展坚持零构建，SDK 要么得打包要么得
@@ -12,7 +12,7 @@
  *   这在 MV3 里要绕一圈（重定向白名单、tabs 监听），对个人工具不值得。
  *   邮箱+密码一次请求拿到 token，零跳转。
  *
- *   2026-09-10 更新：career-web 网页端**也改成密码登录了**。
+ *   2026-09-10 更新：网页端**也改成密码登录了**。
  *   在那之前它只能用邮件链接，于是真实链路是"邮件链接登网页 →
  *   在网页里设密码 → 拿密码来插件登录"——密码明明已经存在，
  *   网页端自己却不用它。现在两端同一个账号、同一个密码。

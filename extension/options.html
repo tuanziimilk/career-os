@@ -171,7 +171,7 @@
   <fieldset id="sync">
     <legend>云端同步</legend>
     <p class="tip" style="margin-top:0">
-      同步到 <code>career-web</code> 工作台用的同一套 Supabase 项目。
+      同步到 <code>Career OS</code> 工作台用的同一套 Supabase 项目。
       不装 SDK，手写基于 fetch 的客户端——和上面调模型是同一套零构建原则。
     </p>
     <!-- ⚠️ URL + anon key 收进 details：这两个值配一次就再也不动，
@@ -184,7 +184,7 @@
       <label for="supabaseAnonKey">anon public key</label>
       <input id="supabaseAnonKey" placeholder="eyJ...">
       <p class="tip">
-        两个值都在 career-web 的 <code>.env.local</code> 里，或 Supabase Dashboard →
+        两个值都在工作台的 <code>web/.env.local</code> 里，或 Supabase Dashboard →
         Settings → API 里能找到。anon key 可以公开——权限完全由数据库的 RLS 决定。
       </p>
     </details>
@@ -200,7 +200,7 @@
       </div>
     </div>
     <p class="tip">
-      和 career-web 工作台是<b>同一个账号、同一个密码</b>。
+      和 Career OS 工作台是<b>同一个账号、同一个密码</b>。
       如果这个账号还没有密码（当初是用邮件链接注册的），先去工作台
       右上角「切换数据源」用邮件链接登进去，在那儿设一次密码。
     </p>

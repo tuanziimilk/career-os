@@ -28,3 +28,9 @@ Thumbs.db
 *.log
 .idea/
 .vscode/
+
+# 内容人工 review 的生成快照。它是 web/scripts/dump-content-review.mjs 的产物，
+# 每跑一次就是一份带日期的新文件，而且**生成时点的内容可能还没脱敏**。
+# 2026-09-15 就是这么把一份脱敏前的快照提交进公开仓库的。
+# 要看就现跑：node web/scripts/dump-content-review.mjs
+docs/内容review-待确认_*.md

@@ -24,7 +24,7 @@
 
 ---
 
-## 一、Chrome 扩展（jd-insight，46 commits，v2.2.0）
+## 一、Chrome 扩展 `extension/`（零构建，v2.2.0）
 
 ### 1.1 页面上的采集
 
@@ -39,7 +39,7 @@
 | 更新时字段合并（保投递历史） | 自动 | `lib/jdMerge.js` | 同上 | ✅ 2026-09-14 |
 | 字体反爬还原薪资 | 自动 | `lib/glyphmap.js` | 无 | ✅ |
 | 薪资解析 / 归一 | 自动 | `lib/salary.js` | `check-shared` 比对 web 端 | 🔧 |
-| **薪资批量补录界面** | —— | **不存在** | —— | 📝 `content.js:137` 承诺了 |
+| 薪资补录 | 弹窗列表里每条的「＋薪资」chip，点击原地变输入框 | `popup.js:250` `setSalary()` | 无 | ✅ **2026-09-15 更正** |
 
 ### 1.2 扩展弹窗（popup）
 
@@ -90,18 +90,18 @@
 | 能力 | 入口 | 实现 | 状态 |
 |---|---|---|---|
 | JD 汇总报告 | `python analyzer/analyze_jd.py` | `analyze_jd.py` | ✅ |
-| 能力组词典 | `analyzer/config.py` `GROUPS` | —— | ⚠️ **与 `career-web/src/data/skills.json` 分叉**，合并排在 P2.7 |
+| 能力组词典 | `analyzer/config.py` `GROUPS` | —— | ⚠️ **与 `web/src/data/skills.json` 分叉**，合并排在 P2.7 |
 | 个人能力现状 | `analyzer/config.py` `MY_PROFILE` | —— | ⚠️ **仍是示例占位**，报告缺口章因此不输出 |
 | 样本 < 10 条闸门 | 自动 | `analyze_jd.py` | ✅ |
 | JobSpy 导入（LinkedIn 等） | —— | 不存在 | 📝 ROADMAP v2.2 L3 |
 
 ---
 
-## 二、Career OS 工作台（career-web，14 commits）
+## 二、Career OS 工作台 `web/`（Vite + React + TS）
 
-七个页面，都挂在 `App.tsx` 的路由上，每个页面一个文件、一个默认导出：
+七个页面，都挂在 `web/src/App.tsx` 的路由上，每个页面一个文件、一个默认导出：
 
-| 路由 | 页面 | 实现 | 行数 | 状态 |
+| 路由 | 页面 | 实现（均在 `web/` 下） | 行数 | 状态 |
 |---|---|---|---|---|
 | `/` | 总览 | `pages/Overview.tsx` | 268 | ✅ |
 | `/pipeline` | 投递漏斗 | `pages/Pipeline.tsx` | 425 | ✅ |
@@ -159,9 +159,9 @@
 | `extension/lib/glyphmap.js` | `collectPua` | 调试用？❓ |
 | `extension/lib/jdMerge.js` | `SITE_PREFIX` | 09-14 新增，可能就是给测试的 ❓ |
 | `extension/lib/syncSupabase.js` | `ensureHostPermission` | **值得看一眼**，权限相关的东西没被调用比较可疑 |
-| `career-web/src/lib/match.ts` | `quickCoverage` | ❓ |
-| `career-web/src/lib/capabilityNote.ts` | `LEVEL_MARKS` | ❓ |
-| `career-web/scripts/review-content.mjs` | `digestProducts` `diffAgainstMark` | 脚本内部函数导出，无害 |
+| `web/src/lib/match.ts` | `quickCoverage` | ❓ |
+| `web/src/lib/capabilityNote.ts` | `LEVEL_MARKS` | ❓ |
+| `web/scripts/review-content.mjs` | `digestProducts` `diffAgainstMark` | 脚本内部函数导出，无害 |
 
 > `.d.ts` 文件（`salary.d.ts` / `mammoth-browser.d.ts`）显示零引用是**扫描器的假阳性**，
 > 类型声明是隐式加载的，不用管。
@@ -174,10 +174,19 @@
 2. `stats()` 算出的 `cities` —— `answerStats` 没路由（标杆集 A8）
 3. 设置页手填价格 —— 字段在、界面删了（这条是**故意的**，见 `llm.js` 注释）
 
-### 3.3 两个「注释承诺了但不存在」（📝）
+### 3.3 一个「注释承诺了但不存在」（📝）
 
-1. 薪资批量补录界面 —— `content.js:137`
-2. 幻觉自检 —— ROADMAP v2.1 第 3 项
+1. 幻觉自检 —— ROADMAP v2.1 第 3 项
+
+> ~~2. 薪资批量补录界面~~ —— **2026-09-15 更正：它是存在的。**
+> `popup.js:250` 每条记录都有「＋薪资」chip，点一下原地变输入框，
+> 待补的那些还有 `.pend` 虚线边高亮。`content.js:137` 那句「回头在扩展弹窗里
+> 内联批量补」**已经兑现**。
+>
+> 我判断错的原因值得记下来：我 grep 的是 `salaryPending` 这个**标志位**，
+> 而 UI 是按 `r.salary` 空不空来决定显示的，压根没用那个标志。
+> **搜标志不等于搜能力** —— 这正是为什么清册要按「用户从哪进」组织，
+> 而不是按「哪个变量被用到」。
 
 ---
 
@@ -199,5 +208,6 @@
 **不要手写维护。** 每次做完一轮改动，跑一次扫描重新生成骨架，人工只改状态列。
 扫描脚本建议落到 `scripts/scan-features.mjs`（现在还在临时目录）。
 
-> **这份清册暂时放在 `jd-insight/docs/` 下，但它描述的是两个仓库。**
-> 这本身就说明问题——见下一节的仓库结构讨论。
+> **2026-09-15 更新**：两个仓库已合并（`git subtree`，career-web → `web/`），
+> 这份清册终于和它描述的代码在同一个版本历史里了。
+> 原来这里写着「它描述两个仓库却只能放在其中一个下面」——那句话本身就是合并的理由之一。

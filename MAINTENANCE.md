@@ -37,7 +37,7 @@
 
 ## 二、影响结论、只能改代码（🔴 = 无界面）
 
-### 技能词典 `career-web/src/data/skills.json`（权威源）
+### 技能词典 `web/src/data/skills.json`（权威源）
 
 改完必须跑 `cd career-web && npm run check:shared -- --fix` 重新生成扩展侧副本。
 
@@ -57,7 +57,7 @@
 
 **已知不一致**：`finance`（金融行业经验）按 v2.2 定的原则（行业背景是门槛不是能力）本该删掉，`calibration` 里自认是「历史遗留」。
 
-### 红线与意图路由 `jd-insight/extension/lib/intents.js`
+### 红线与意图路由 `extension/lib/intents.js`
 
 | 词表 | 规模 | 错了会怎样 | 上次复核 |
 |---|---|---|---|
@@ -70,7 +70,7 @@
 
 ### 阈值与魔法数字
 
-> 🟢 **现在有登记表了**：`career-web/src/data/thresholds.json` 登记了 18 项
+> 🟢 **现在有登记表了**：`web/src/data/thresholds.json` 登记了 18 项
 > （值 / 依据 / 被测量过没有 / 改错了会怎样），**07 校准台**有一栏显示它。
 > `npm run check:thresholds` 会去源文件里逐字核对，改一边不改另一边就让 build 失败 ——
 > 所以那张表不是文档，是契约。
@@ -150,7 +150,7 @@
 
 ## 四、机器闸门覆盖了什么、没覆盖什么
 
-**有闸门**（`career-web/scripts/check-shared.mjs`，挂在 `npm run build` 上）：
+**有闸门**（`web/scripts/check-shared.mjs`，挂在 `npm run build` 上）：
 
 | 共享物 | 权威方 | 校验方式 |
 |---|---|---|

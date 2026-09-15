@@ -18,7 +18,7 @@
 
 这不是定位话术，是**能力边界的如实声明**：
 
-整套系统的核心资产是那份 26 项的技能词典（`career-web/src/data/skills.json`），
+整套系统的核心资产是那份 26 项的技能词典（`web/src/data/skills.json`），
 它按一份 AI 产品经理简历校准过三轮。拿 7 条真实 AI 产品 JD 做过覆盖扫描
 （"找出一条技能都没命中的句子"），**AI/Agent 那一侧零漏判**，
 剩下的盲区全在通用产品能力那侧——补了两处（To B、抽象/拆解），
@@ -42,11 +42,15 @@
 
 ## 1. 为什么是三个部分，而不是一个
 
+> **2026-09-15 起，三个部分在同一个 git 仓库里**（`extension/` + `web/` + `supabase/`）。
+> 下面这张表说的是**运行时拆分**，那个判断没有变，也不该变 ——
+> 变的只是「它们在不在同一个版本历史里」。为什么合并见本节末尾。
+
 | 部分 | 技术栈 | 负责什么 | 为什么不能合并进别的部分 |
 |---|---|---|---|
-| **jd-insight**（Chrome 扩展，MV3） | 零构建纯 ESM | 在招聘网站页面上采集；本地问答 | 只有扩展能读到你正在看的那个页面 |
-| **Career OS**（工作台） | Vite + React + TS | 匹配分析、漏斗、学习进度、简历管理 | 需要构建系统（PDF/Word 解析要打包依赖）；也需要一个能发给别人看的 URL |
-| **Supabase** | Postgres + RLS | 唯一的持久化真相 | 两个客户端都要写，必须有个中间层 |
+| **`extension/`**（Chrome 扩展，MV3） | 零构建纯 ESM | 在招聘网站页面上采集；本地问答 | 只有扩展能读到你正在看的那个页面 |
+| **`web/`**（Career OS 工作台） | Vite + React + TS | 匹配分析、漏斗、学习进度、简历管理 | 需要构建系统（PDF/Word 解析要打包依赖）；也需要一个能发给别人看的 URL |
+| **`supabase/`** | Postgres + RLS | 唯一的持久化真相 | 两个客户端都要写，必须有个中间层 |
 
 ### 这个拆分是取舍，不是技术限制
 
@@ -57,6 +61,24 @@
 - **可分享**：网页能发链接、手机能打开；扩展页不行。
 
 反过来，如果目标变成「装一个东西就全都有」，合并是可行路径。这条记在这里，免得以后把「当时的取舍」误当成「技术上不行」。
+
+### 但仓库为什么合并了（2026-09-15）
+
+**运行时分开 ≠ 仓库分开。** 这两件事之前被混为一谈，代价是真实的：
+
+- `web/scripts/check-shared.mjs` 直接读 `../extension/lib/salary.js`。分仓库时它读的是
+  `../jd-insight/extension/...` —— 换台电脑、文件夹名不一样，`npm run build` 直接挂
+- `check-thresholds.mjs` 的 `ROOT` 早就假定了一个「仓库组根目录」，**而那个目录在 git 里
+  并不存在**。共享物靠 `check:shared` 事后检测分叉，但没有任何记录说「web 的这个 commit
+  是对着扩展的哪个 commit 校验通过的」
+- 一次改动跨两端（如 2026-09-14 换去重键前缀，同时影响 `extension/lib/jdMerge.js` 和云端
+  `career_jds` 的读取方）**没法做成原子提交，也没法一起回滚**
+
+合并不是引入耦合，是把**已经存在的耦合**变成 git 能看见、能约束的东西。
+合并方式是 `git subtree`，career-web 的 14 条历史保留在同一个版本库里。
+
+> ⚠️ subtree 不改写历史路径：那 14 条提交记的仍是 `src/App.tsx` 而不是 `web/src/App.tsx`，
+> 所以 `git log -- web` 只显示合并那一条。历史都在，按路径追溯要用 `--follow` 或查旧路径。
 
 ---
 
@@ -276,9 +298,9 @@ Career OS 工作台（读写同一份数据）
 
 | 位置 | 内容 | 处理 |
 |---|---|---|
-| `career-web/src/data/skills.json` 的 `calibration` 字段 | 按真实简历校准的记录，隐含自评短板 | 摘掉或改成中性描述 |
-| `career-web/src/data/modules.json`、`questions.json` | 从个人知识库导出的学习内容 | 确认不含公司名、内部系统名、个人短板原文 |
-| `career-web/src/lib/demoData.ts` | 已是构造数据，但要确认没混入真实公司名 | 复核 |
+| `web/src/data/skills.json` 的 `calibration` 字段 | 按真实简历校准的记录，隐含自评短板 | 摘掉或改成中性描述 |
+| `web/src/data/modules.json`、`questions.json` | 从个人知识库导出的学习内容 | 确认不含公司名、内部系统名、个人短板原文 |
+| `web/src/lib/demoData.ts` | 已是构造数据，但要确认没混入真实公司名 | 复核 |
 | `.env.local` / Supabase URL 与 key | 不在仓库里（已确认），但要确认历史提交里也没有 | `git log -p` 搜一遍 |
 | 采集到的 JD | 存在 `chrome.storage` 和 Supabase，不在仓库里 | 无需处理 |
 
@@ -288,11 +310,23 @@ Career OS 工作台（读写同一份数据）
 
 ## 7. 目录
 
-- `jd-insight/extension/` —— Chrome 扩展（零构建）
+一个仓库，三个各自独立运行的部分。
+
+- `extension/` —— Chrome 扩展（零构建，改完浏览器点一次重载就生效）
   - `content.js` 采集｜`popup.js` 列表与打标｜`sidepanel.js` 问答与漏斗｜`options.js` 设置
-  - `lib/` —— `salary.js` 薪资解析｜`glyphmap.js` 字形还原｜`retrieve.js` 检索｜`intents.js` 意图路由｜`llm.js` 模型调用与计费｜`syncSupabase.js` 云同步｜`pipeline.js` 漏斗计算｜`skills.js` 技能词典（生成）
-- `jd-insight/scripts/eval-retrieve.mjs` —— 检索评测
-- `career-web/` —— 工作台（Vite + React + TS）
-  - `src/lib/` —— `types.ts` 数据契约｜`supabaseSource.ts` / `localSource.ts` / `demoData.ts` 三种数据源｜`match.ts` 匹配分析｜`resume.ts` 简历解析｜`funnel.ts` 漏斗
+  - `lib/` —— `salary.js` 薪资解析｜`glyphmap.js` 字形还原｜`jdMerge.js` 去重键与更新合并｜`retrieve.js` 检索｜`intents.js` 意图路由｜`cite.js` 引用校验｜`gap.js` 能力缺口｜`llm.js` 模型调用与计费｜`providers.js` 厂商目录与计价｜`syncSupabase.js` 云同步｜`pipeline.js` 漏斗计算｜`funnelUI.js` 漏斗绘制｜`skills.js` 技能词典（生成，勿手改）
+- `scripts/` —— 扩展侧评测，`node scripts/eval-all.mjs` 一次跑完 8 个
+- `analyzer/` —— Python 汇总报告（无第三方依赖）；`config.py` 是私人画像，不进版本库
+- `web/` —— Career OS 工作台（Vite + React + TS，独立 `npm install` / `npm run build`）
+  - `src/pages/` —— 总览 / 投递 / 学习 / 匹配 / 刷题 / 简历 / **校准台**
+  - `src/lib/` —— `types.ts` 数据契约｜`supabaseSource.ts` / `localSource.ts` / `demoData.ts` 三种数据源｜`match.ts` 匹配分析｜`resume.ts` 简历解析｜`funnel.ts` 漏斗｜`rowVersion.ts` 乐观并发
+  - `src/data/` —— `skills.json` 技能词典（**权威源**）｜`thresholds.json` 18 项阈值登记｜`modules.json` / `questions.json` 学习内容
+  - `scripts/` —— 六道闸门，全部挂在 `npm run build` 前
   - `supabase/schema.sql` —— 幂等建表脚本
-  - `scripts/check-shared.mjs` —— 共享物校验（挂进 build）
+- `docs/` —— PRD｜ROADMAP｜**FEATURES.md 功能清册**｜调研与迁移记录
+- `eval/golden_questions.md` —— 标杆问题集
+- `data/` `reports/` —— 采集数据与生成报告，均 gitignored
+
+**跨端共享物**（`web/scripts/check-shared.mjs` 守着，方向别搞反）：
+薪资解析权威在扩展（`extension/lib/salary.js` → 复制到 `web/src/lib/salary.js`）；
+技能词典权威在工作台（`web/src/data/skills.json` → 生成 `extension/lib/skills.js`）。

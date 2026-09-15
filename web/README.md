@@ -1,11 +1,13 @@
 # Career OS · 求职工作台
 
 > 工程决策与取舍（含工作台与扩展**为什么分开**、共享物如何防分叉）写在扩展仓库的
-> [ARCHITECTURE.md](../jd-insight/ARCHITECTURE.md) —— 那份文档同时覆盖两边。
+> [ARCHITECTURE.md](../ARCHITECTURE.md) —— 那份文档同时覆盖两边。
 
 一个人的求职数据中枢：投递漏斗、学习进度、面试题刷题。
 
-跟 [jd-insight](https://github.com/tuanziimilk/jd-insight)（浏览器扩展，负责采集 JD 和聊天式分析）是同一套体系的两个界面，各自做自己适合的事——**该统一的是数据契约，不是界面**。
+跟同仓库的 [`extension/`](../extension)（浏览器扩展，负责采集 JD 和聊天式分析）是同一套体系的两个界面，各自做自己适合的事——**该统一的是数据契约，不是界面**。
+
+> 2026-09-15 起两者在同一个 git 仓库。运行时仍然分开：扩展零构建，工作台在 `web/` 下独立 `vite build`。
 
 ## 三种数据源，同一套渲染层
 
@@ -42,7 +44,7 @@ GITHUB_PAGES=true npm run build
 ## 目录
 
 ```
-career-web/
+web/
 ├── src/
 │   ├── lib/
 │   │   ├── types.ts          数据契约：DataSource 接口，三种数据源都实现它

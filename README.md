@@ -312,28 +312,40 @@ LangChain JS 在 MV3 里要付打包器 + 构建步骤 + 几百 KB 体积 + CSP 
 ## 目录
 
 ```
-jd-insight/
-├── extension/               Chrome 扩展（MV3）
+career-os/
+├── extension/               Chrome 扩展（MV3，零构建）
 │   ├── manifest.json
 │   ├── content.js           采集：两层兜底提取 + 悬浮按钮
-│   ├── popup.html/js        计数 / 预览 / 导出
-│   ├── sidepanel.html/js    💬 对话式情报台
-│   ├── options.html/js      模型设置
+│   ├── popup.html/js        计数 / 预览 / 打标 / 导出
+│   ├── sidepanel.html/js    💬 对话式情报台 + 漏斗
+│   ├── options.html/js      模型设置 + 云同步
 │   ├── background.js        快捷键 + 侧边栏
 │   └── lib/
+│       ├── jdMerge.js       去重键与「更新不覆盖投递历史」的合并规则
 │       ├── retrieve.js      关键词打分检索 + 确定性统计
 │       ├── intents.js       意图定义 / 规则分类 / 系统提示
+│       ├── cite.js          引用校验（回答里的【JD n】对不对）
 │       └── llm.js           OpenAI 兼容流式客户端
+├── web/                     Career OS 工作台（Vite + React + TS）
+│   ├── src/pages/           总览 / 投递 / 学习 / 匹配 / 刷题 / 简历 / 校准台
+│   ├── src/data/            skills.json（技能词典权威源）· thresholds.json（18 项阈值登记）
+│   ├── scripts/             六道闸门，挂在 npm run build 前
+│   └── supabase/schema.sql  幂等建表脚本
 ├── analyzer/
 │   ├── analyze_jd.py        汇总分析（无依赖）
 │   └── config.example.py    能力组词典 + 个人画像模板
+├── scripts/                 扩展侧评测：node scripts/eval-all.mjs 跑完 8 个
 ├── docs/
 │   ├── PRD.md               产品需求文档
-│   └── ROADMAP.md           升级路线
+│   ├── ROADMAP.md           升级路线
+│   └── FEATURES.md          功能清册：现在到底有什么
 ├── eval/
 │   └── golden_questions.md  标杆问题集（回归用）
 ├── data/                    采集数据（gitignored）
 └── reports/                 生成的报告（gitignored）
+
+扩展和工作台**运行时是分开的**（扩展零构建，工作台独立 vite build），
+2026-09-15 起共用一个 git 仓库 —— 为什么这么选见 ARCHITECTURE.md §1。
 ```
 
 ## 支持站点

@@ -225,7 +225,7 @@ PRD §1.3 那条同步修订。
 最欢迎的三类 PR：
 
 1. **新站点的选择器** —— 加在 `content.js` 的 `pick()` 列表里，不影响兜底逻辑
-2. **能力组词典** —— 现在的权威源是 `career-web/src/data/skills.json`
+2. **能力组词典** —— 现在的权威源是 `web/src/data/skills.json`
    （`analyzer/config.example.py` 的 `GROUPS` 是**另一套已经分叉的旧词典**，
    合并排在 P2.7）。改完跑 `npm run check:shared -- --fix`
 3. **标杆问题** —— `eval/golden_questions.md`，特别是**能让当前版本答错的问题**

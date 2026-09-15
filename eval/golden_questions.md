@@ -40,7 +40,7 @@
 > v2.0：6/6 已测项全部规则命中。
 > v2.2：13/13（A 组 + 红线组，见 `scripts/eval-intents.mjs`）。
 >
-> ⚠️ **这一组现在是自动化的**：`node jd-insight/scripts/eval-intents.mjs`。
+> ⚠️ **这一组现在是自动化的**：`node scripts/eval-intents.mjs`。
 > 手工表格保留，因为它记录「为什么期望是这个」——那是脚本装不下的东西。
 > 但打钩的依据以脚本为准，人不再手工标 ✅。
 

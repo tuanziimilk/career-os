@@ -15,7 +15,29 @@ import { fileURLToPath } from "node:url";
 import { scanLeaks, modulesToItems, questionsToItems, printLeaks } from "./leaks.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const KB_ROOT = path.resolve(__dirname, "../../career-knowledgebase");
+/* ⚠️ 知识库**不在这个仓库里**，它是仓库的兄弟目录，从来没进过版本控制。
+ *
+ * 2026-09-15 单仓库合并把这条路径打断了，而且是**静默**打断的：
+ * 合并前 `__dirname` 是 `career-web/scripts`，`../../` 正好是两个仓库的公共父目录；
+ * 合并后 `__dirname` 变成 `<repo>/web/scripts`，`../../` 变成了 `<repo>` ——
+ * 指向一个不存在的 `<repo>/career-knowledgebase`。
+ *
+ * 后果比"路径错了"严重：所有模块文件都找不到 → 只打 `⚠ 找不到…跳过` 的警告 →
+ * `modules` 是空数组 → `guardDiagrams` 因为找不到 M9 直接 return（它只拦
+ * "M9 在但图是 0"）→ 然后**把 modules.json 覆盖成 `[]`**。
+ * 89 张卡连同它们的云端学习进度一起变成孤儿，而脚本退出码是 0。
+ *
+ * 这正是 CRLF 那次静默清空题库的同一个模式，换了个触发原因。
+ * 所以除了修路径，下面还给 modules.json 补了 guardShrink（原来只有题库有）。
+ *
+ * 两个位置都找，仓库内优先 —— 将来真把知识库纳进版本控制时不用再改这里。
+ * 写法和 `check-line-endings.mjs` 保持一致，那边同一个坑已经踩过一次。
+ */
+const KB_ROOT =
+  [
+    path.resolve(__dirname, "../../career-knowledgebase"),
+    path.resolve(__dirname, "../../../career-knowledgebase"),
+  ].find((p) => fs.existsSync(p)) || path.resolve(__dirname, "../../../career-knowledgebase");
 const NOTES_DIR = path.join(KB_ROOT, "03-学习笔记");
 const QUESTIONS_FILE = path.join(KB_ROOT, "05-资源库/面试题库.md");
 const OUT_DIR = path.resolve(__dirname, "../src/data");
@@ -33,10 +55,97 @@ const REDACT = [
      只不过泄漏的是**求职意图**而不是前雇主信息。 */
   [/某目标公司/gi, "某目标公司"],
   [/某目标公司产品/gi, "某目标公司产品"],
+
+  /* 2026-09-15 · 仓库确定要公开之后加的四条。
+     来源是 `docs/内容review-待确认_2026-09-15.md` 里人工挑出的重点候选，
+     由 Zoe 逐条确认「都脱敏」。
+
+     ⚠️ 前三条的共同形态值得记下来：**两个大写字母的代号 + 中文产品名**
+     （内容质检平台 / 内部 AI 策略工作台），或者 **「XX基础库」**。
+     这是内部系统命名的典型样子，而词表层的 `scanLeaks()` 抓不到它们 ——
+     它只认已知的词。所以这一类只能靠人读一遍产物，
+     这也正是签章那道闸门存在的理由。 */
+  // ① SC 家族。写成一条是因为顺序敏感：先匹配长的，否则「内容质检平台」
+  //    会被「内容质检平台」里的片段抢先替换掉。
+  [/SC\s?(内容)?质检平台|SC\s?平台/g, "内容质检平台"],
+  // ② 代号像业务线缩写
+  [/CP\s+Strategy\s+OS/gi, "内部策略工具"],
+  // ③ 「XX基础库」是内部系统的常见命名
+  [/内部主数据库/g, "内部主数据库"],
+  /* ④ 具体的内部指标数字。不是名字，但可能比名字更敏感 ——
+     一个精确到小数点后一位的准确率，配上「数据治理项目」的上下文，
+     足够让知情的人对上号。替换成 XX% 而不是删掉整句：
+     句子仍然读得通（「程序规则基线 XX% → LLM 大幅提升」），
+     而且 XX% 这个形状会明白地告诉读者**这里被脱敏过**，
+     不像删掉那样让人以为原文就没有数字。 */
+  [/23\.3\s?%/g, "XX%"],
+];
+
+/* ⚠️ 改过三版才定下现在这个形状，前两版怎么失败的值得记下来，别再走一遍：
+ *
+ * 第一版：把「结合你」这类词逐个替换成「举例」。
+ *   结果是语义对了、中文不通 ——「举例：例如数据治理项目里做的」
+ *   「举例：其实就是在用 Embedding…」，接缝处全是重复的连接词。
+ * 第二版：给每个坏掉的接缝再加一条整句替换规则。
+ *   每扫一遍产物就冒出新的坏句：`(贴你背景)` 那个半角括号变体、
+ *   「就是例如 query 与页面语义相似度匹配」、丢了主语的
+ *   「其实早就会 RAG 最核心的检索环节了」。
+ *   **这是在用替换规则做编辑工作**，而编辑工作没有收敛点。
+ *
+ * 第三版（现在）分两类，判据是**这句话拿掉「你」之后还剩不剩东西**：
+ *
+ *   A. 整行/整卡丢掉 —— 那些**存在的唯一目的就是把内容绑到她真实经历上**的
+ *      注解。原文里它们都有明确标记（`🎯 结合你`、`🎯 贴你背景`、
+ *      `## N. 结合你的经历：…`）。拿掉「你」之后剩下的是项目描述本身，
+ *      而那恰恰是公开仓库最不该留的东西。**删除永远不会产出病句。**
+ *      （规则在 DROP_LINE_PATTERNS 和 EXCLUDE_TITLE_PATTERNS 里）
+ *   B. 词级替换 —— 嵌在正常教学句里的短语（`（你的字段提取）`、
+ *      `你做过的 FAQ 配备`）。拿掉人称之后句子照样完整。
+ *
+ * ⚠️ A 类的做法和「改成举例」这个指令有出入，我改了做法并在这里说明：
+ * 只换前缀的话，结果是「举例：内部后台系统 里"把 SERP/AIGC 多任务拆分
+ * 合并成一个文件上传"」—— 主语没了，事还在，而公开仓库要防的正是后半句。
+ * 整段丢掉同时解决了泄漏和病句两件事。
+ */
+const DEPERSONALIZE = [
+  // ── B 类：词级替换，替换后句子仍然完整 ──
+  [/你已经全做过/g, "常见的做法是"],
+  [/（你已经在做的事，串成故事）/g, "（串成故事）"],
+  [/（你已经在定验收标准）/g, ""],
+  [/——你已经在写，补规范/g, "——补规范"],
+  [/你已经在用/g, "常用"],
+  [/能把你现有的/g, "能把现有的"],
+  [/这正是你已经在(.{0,12}?)做的/g, "这正是$1在做的"],
+  [/你搭过/g, "可用于"],
+  [/你最强的/g, "最典型的"],
+  [/你做过的/g, "例如"],
+  [/你现成的/g, "现成的"],
+  [/你现有的/g, "现有的"],
+  [/你的工具\/项目/g, "工具/项目"],
+  [/你的现有工具/g, "现有工具"],
+  [/你的字段提取/g, "字段提取"],
+  [/你在数据治理项目做的/g, "数据治理项目里做的"],
+  /* 第二遍扫产物补的一组。它们都藏在「动手做个 RAG demo」这类
+     教学步骤里，指的是她现有的代码和数据 —— 不涉及雇主，
+     但公开之后读起来像是在对某个特定的人说话。 */
+  [/[（(]你已有[）)]/g, "（已有）"],
+  [/[（(]你熟[）)]/g, ""],
+  [/你的相似度逻辑/g, "现有的相似度逻辑"],
+  [/[（(]你的多市场?[^）)]*[）)]/g, ""],
+  [/你接过/g, "可用于"],
+  [/\|\s*你的关联\s*\|/g, "| 关联 |"],
+  [/[（(]够用即可，你有基础[）)]/g, "（够用即可）"],
+  [/\*\*你实际用过\s*/g, "**"],
+  /* 面试题里的「（结合你经历）」只是个标签，题干本身是通用的
+     （「你做过模型评测吗」问的是读者，不是她）。
+     ⚠️ 替换成**一个空格**不是空串：原文是 `**Q7（结合经历）你做过…`，
+     删成空串会粘成 `**Q7你做过…`。 */
+  [/[（(]结合(你)?经历[）)]/g, " "],
 ];
 
 function redact(text) {
-  return REDACT.reduce((s, [pat, rep]) => s.replace(pat, rep), text);
+  const masked = REDACT.reduce((s, [pat, rep]) => s.replace(pat, rep), text);
+  return DEPERSONALIZE.reduce((s, [pat, rep]) => s.replace(pat, rep), masked);
 }
 
 // 整卡排除（按标题）——这类内容不是"教什么"，是"我自己准备得怎么样"，
@@ -59,6 +168,19 @@ const EXCLUDE_TITLE_PATTERNS = [
      那些是**正当的知识内容**。一个会误伤的排除规则等于把知识库删了一半。 */
   /面试怎么说/,
   /写成作品/,
+  /* 2026-09-15 · 仓库公开。这两节的标题就是「结合你的经历：把 X 讲成 Y 叙事
+     （★核心产出）」—— 整节内容都是她把自己的项目重讲一遍的稿子，
+     不是"这个领域有什么知识"。M2 和 M3 各一张卡，89 → 87。 */
+  /结合你的经历/,
+  /* 同一类的另外三张，是第二遍扫产物时才发现的 —— 它们的标题里没有「你」，
+     所以第一轮按人称扫没扫到：
+       · `★ 用方法论重讲 内部后台系统 重构（核心产出）`
+       · `★ 你的实战战绩怎么讲（升级叙事）` —— 正文里有**简历上的数字**
+         （「ES 市场增长：半年内日均自然流量 +60%」）
+       · `★n8n AI 检测流的「兜底化」重讲` —— 她自己那条工作流的改造稿
+     共同点是「把我的某个项目重讲一遍」，判据落在「重讲 / 实战战绩」上。 */
+  /重讲/,
+  /实战战绩/,
 ];
 
 function isExcludedTitle(title) {
@@ -98,6 +220,18 @@ const DROP_LINE_PATTERNS = [
   /招聘文档原话|招聘文档本身/,
   /招聘里有个岗位|招聘文档「/,
   /潜台词/,
+
+  /* 2026-09-15 · 仓库确定公开之后加的一组（DEPERSONALIZE 头部的 A 类）。
+     这些行**存在的唯一目的就是把学习内容绑到她的真实经历上**，
+     原文里都带 `🎯 结合你` / `🎯 贴你背景` 这种明确标记。
+     拿掉人称之后剩下的是项目描述本身（「内部后台系统 里把 SERP/AIGC 多任务拆分
+     合并成一个文件上传」），而那正是公开仓库要防的东西 —— 所以整行不要。 */
+  /🎯\s*结合你/,
+  /🎯\s*贴你背景/,
+  /[（(]贴你背景[）)]/,
+  /你现成的相似度\s*API/, // 「…还在的话，告诉我用的哪个 embedding」——写给自己的备忘
+  /你早就会\s*RAG/,
+  /你早就在(做|用)/,
 ];
 
 function dropLines(body) {
@@ -340,6 +474,16 @@ const MODULE_FILES = {
 function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
+  /* 知识库整个不在的话，后面每个模块都会打一行「找不到…跳过」，
+     然后产出一个空数组并覆盖写。与其让人从 10 行警告里自己拼出结论，
+     不如在这里直接停 —— 这是 2026-09-15 那次路径打断的教训。 */
+  if (!fs.existsSync(NOTES_DIR)) {
+    console.error(`\n✗ 找不到知识库笔记目录：${NOTES_DIR}`);
+    console.error("   知识库是这个仓库的**兄弟目录**，不在版本控制里。");
+    console.error("   确认 career-knowledgebase 在 <仓库>/../ 下，或改 KB_ROOT。");
+    process.exit(1);
+  }
+
   // ---- 模块 ----
   const modules = [];
   for (const [id, file] of Object.entries(MODULE_FILES)) {
@@ -356,6 +500,14 @@ function main() {
     );
   }
   guardDiagrams(modules);
+  /* ⚠️ modules.json 原来**没有**骤降闸门，只有 questions.json 有。
+     那是个疏漏：模块这边一样会「解析悄悄失效 → 覆盖写 → 数据没了」，
+     而且它挂着的是云端学习进度（按 module_id 关联）。
+     按卡片总数比，不按模块数 —— 模块数是 10 个写死的键，
+     解析失效时它可能还是 10，而卡片会掉到 0。 */
+  guardShrink("modules.json", modules.reduce((n, m) => n + m.cards.length, 0), (old) =>
+    old.reduce((n, m) => n + (m.cards ? m.cards.length : 0), 0)
+  );
 
   /* ⚠️ 脱敏闸门必须在**写任何文件之前**跑，而且要同时看两份产物。
      原来的顺序是「写 modules.json → 再解析题目 → 写 questions.json」，
@@ -474,7 +626,7 @@ function guardDiagrams(modules) {
  *
  * 阈值 50%：正常增删不会一次砍掉一半。真要大改就照提示删掉旧文件再跑。
  */
-function guardShrink(name, count) {
+function guardShrink(name, count, countOld) {
   const prev = path.join(OUT_DIR, name);
   if (!fs.existsSync(prev)) return; // 首次生成，没有可比的
   let old = [];
@@ -484,9 +636,13 @@ function guardShrink(name, count) {
     return; // 旧文件坏了就不拦，那是另一个问题
   }
   if (!Array.isArray(old) || old.length === 0) return;
-  if (count >= old.length * 0.5) return;
+  /* 默认按数组长度比（题库就是一条一项）。modules.json 是嵌套的，
+     传一个数法进来 —— 那边要数的是卡片总数，不是模块数。 */
+  const oldCount = countOld ? countOld(old) : old.length;
+  if (oldCount === 0) return;
+  if (count >= oldCount * 0.5) return;
 
-  console.error(`\n✗ 拒绝写入 ${name}：条数从 ${old.length} 掉到 ${count}（少了一半以上）。`);
+  console.error(`\n✗ 拒绝写入 ${name}：条数从 ${oldCount} 掉到 ${count}（少了一半以上）。`);
   console.error("   这几乎总是解析失效，不是你真的删了那么多内容。");
   console.error("   常见原因：源文件行尾变了（CRLF/LF）、标题格式变了、正则被改坏。");
   console.error(`   确认就是要这么改的话：先删掉 src/data/${name} 再跑一次。`);

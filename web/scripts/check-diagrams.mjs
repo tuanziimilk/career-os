@@ -22,14 +22,20 @@ import { extractDiagrams } from "./import-content.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MODULES = join(HERE, "..", "src", "data", "modules.json");
-const M9_SOURCE = join(
-  HERE,
-  "..",
-  "..",
-  "career-knowledgebase",
-  "03-学习笔记",
-  "M9-Agent系统脑图.md"
-);
+/* ⚠️ 2026-09-15 单仓库合并把这条路径打断了，而且**这道闸门自己不会喊疼** ——
+ * 找不到源文件时它走「跳过并明说跳过了」那条分支，然后照常打印「全部断言通过」。
+ * 于是从合并那一刻起，这个脚本最有牙齿的那条断言（和知识库原文逐字比对）
+ * 在一台**有知识库**的机器上也一直没跑，而输出看起来一切正常。
+ *
+ * 「源文件缺失就跳过」这个设计本身是对的（别人克隆仓库时确实没有知识库），
+ * 但它让路径错误和环境缺失长得一模一样。所以两个位置都找一下。 */
+const M9_REL = ["03-学习笔记", "M9-Agent系统脑图.md"];
+const M9_SOURCE =
+  [
+    join(HERE, "..", "..", "career-knowledgebase", ...M9_REL),
+    join(HERE, "..", "..", "..", "career-knowledgebase", ...M9_REL),
+  ].find((p) => existsSync(p)) ||
+  join(HERE, "..", "..", "..", "career-knowledgebase", ...M9_REL);
 
 let fail = 0;
 function check(name, cond, detail) {

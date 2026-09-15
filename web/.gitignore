@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.env.local
+.env.*.local
+*.local
+.DS_Store
+*.log
+
+# Supabase CLI 的本地状态：project-ref、pooler 连接串、linked-project.json 都在这儿。
+# anon key 本身可以公开（权限由 RLS 决定），但项目引用没必要暴露——
+# 这条是 .env.example 里就写明的原则。
+supabase/.temp/
+
+# tsx / vite 的临时文件
+_*.mts
+_*.mjs
+
+# TS 增量构建缓存，每次 build 都变，不该进仓
+*.tsbuildinfo

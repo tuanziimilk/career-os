@@ -126,7 +126,7 @@ const JDS = [
   },
   {
     key: "j10",
-    title: "AI产品经理 (XXXXXXXX)",
+    title: "AI产品经理",
     company: "戊公司集团",
     tagline: "上海·长宁区·北新泾 1-3年 本科",
     salary: "20-35K·15薪",

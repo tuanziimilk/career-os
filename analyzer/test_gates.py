@@ -98,6 +98,25 @@ check("只要有一条真的填了，就算可用",
 check("None 不炸", mod.usable_groups(None) == [])
 
 print("")
+print("")
+print("── 去重键归一化：迁移前后的同一条 JD 不能算成两条 ──")
+
+# ⚠️ 这一组补的是一个分母 bug。2026-09-16 的真实情况：
+# data/ 里同时躺着迁移前和迁移后的两份备份，同一个岗位的键分别是
+# `12345678` 和 `boss:12345678`，去重按字面比，于是同一条 JD 算了两次。
+# 外加仓库自带的 sample_jd.txt 也被算进分母。
+# 结果：样本量 13 被报成 17，而「对话式产品」的覆盖率从 15% 虚高到 24%
+# （那几条示例数据正好是客服岗）。全程不报错，报告里只有一个看着很正常的数字。
+check("站点前缀被剥掉", mod.norm_key("boss:12345678") == "12345678")
+check("迁移前后归一到同一个键",
+      mod.norm_key("12345678") == mod.norm_key("boss:12345678"))
+check("别的站点前缀一样处理", mod.norm_key("liepin:abc") == "abc")
+check("URL 降级键不动（它本来就带 ://）",
+      mod.norm_key("https://www.zhipin.com/job_detail/x.html")
+      == "https://www.zhipin.com/job_detail/x.html")
+check("query 串照旧剥掉", mod.norm_key("boss:123?from=search") == "123")
+check("空值不炸", mod.norm_key("") == "" and mod.norm_key(None) == "")
+
 print("── 当前仓库的真实状态 ──")
 print("  config.py 的 MY_PROFILE 共 %d 组：占位 %d 组，真正可用 %d 组"
       % (len(mod.MY_PROFILE), len(mod.PLACEHOLDER_GROUPS), len(mod.USABLE_GROUPS)))

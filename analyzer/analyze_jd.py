@@ -200,6 +200,20 @@ def json_to_block(r):
     return "\n".join(L).strip()
 
 
+def norm_key(key):
+    """去重用的归一化键。
+
+    ⚠️ 必须剥掉 `boss:` 这类站点前缀。2026-09-16 踩到：
+    同一个岗位，迁移前导出的备份里键是 `12345678`，迁移后是 `boss:12345678`，
+    两份备份都在 data/ 里 → 同一条 JD 被当成两条，样本量和覆盖率分母一起虚高。
+    而它不报错，报告照样输出一个看着很正常的数字。
+    """
+    k = (key or "").split("?")[0].strip()
+    if "://" in k:
+        return k
+    return k.split(":", 1)[1] if ":" in k else k
+
+
 def load_blocks():
     """把 JD原始数据/ 目录下所有 .txt 和 .json 都读进来，按链接去重。
 
@@ -209,6 +223,13 @@ def load_blocks():
     os.makedirs(RAWDIR, exist_ok=True)
     files = sorted(glob.glob(os.path.join(RAWDIR, "*.json"))) + \
             sorted(glob.glob(os.path.join(RAWDIR, "*.txt")))
+    # ⚠️ data/sample_jd.txt 是**仓库自带的格式示例**，不是你采的 JD。
+    # 它只在"一条真数据都还没有"时才该出现在分母里 —— 否则它会
+    # 悄悄把样本量 +1，而 MIN_SAMPLE 这道闸门就是按样本量放行的。
+    real = [f for f in files if os.path.basename(f) != "sample_jd.txt"]
+    if real:
+        files = real
+
     if not files:
         io.open(RAW, "w", encoding="utf-8").write(TEMPLATE)
         print("已创建模板：", os.path.normpath(RAW))
@@ -230,7 +251,7 @@ def load_blocks():
             for r in data:
                 if not isinstance(r, dict):
                     continue
-                key = (r.get("key") or r.get("url") or "").split("?")[0]
+                key = norm_key(r.get("key") or r.get("url"))
                 if key and key in seen:
                     continue
                 if key:
@@ -246,7 +267,7 @@ def load_blocks():
                 if len(b) <= 40:
                     continue
                 m = re.search(r"^#\s*链接[:：]\s*(\S+)", b, re.M)
-                key = m.group(1).split("?")[0] if m else ""
+                key = norm_key(m.group(1)) if m else ""
                 if key and key in seen:
                     continue
                 if key:
@@ -305,7 +326,12 @@ def analyze():
     A("")
     A("# AI 产品经理 JD 汇总分析报告")
     A("")
-    A(f"> 样本量：**{n} 条**｜由 `99-脚本/analyze_jd.py` 自动生成，原始数据在 `05-资源库/JD原始数据/jd_raw.txt`。")
+    # ⚠️ 把「这 n 条到底来自哪几个文件」写进报告，不只是打在控制台。
+    # 2026-09-16 踩到：data/ 里躺着两份九月八号的示例残留，样本量 13 被算成 17，
+    # 而「对话式产品」的覆盖率因此从 15% 虚高到 24%（那两条示例正好是客服岗）。
+    # 控制台那行当时是打了的，但报告里只有一个孤零零的 17 —— 回头看报告的人看不到。
+    src = "、".join(f"`{fn}`({c})" for fn, c in used if c)
+    A(f"> 样本量：**{n} 条**｜来自 {src}｜由 `analyzer/analyze_jd.py` 生成。")
     A("> 词频用**覆盖率**（出现在多少条 JD 里），不用总次数——「10 条里 8 条都要」比「一共出现 23 次」更能指导简历。")
     if n < MIN_SAMPLE:
         A(f"> ⚠️ **样本只有 {n} 条**（低于 {MIN_SAMPLE} 条）。缺口那一章已降级为只给计数、不排优先级。")

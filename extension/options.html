@@ -242,6 +242,19 @@
       <button class="ghost" id="clearKey">清除 Key</button>
       <button class="ghost" id="clearUsage">重置用量</button>
     </div>
+
+    <!-- ⚠️ 这个按钮补的是一个真窟窿：popup 一直有「备份 JSON」，
+         却没有任何把它读回来的地方。一个还不回去的备份不是备份 ——
+         采集数据只活在这台电脑的 chrome.storage 里，浏览器配置一重置就没了。 -->
+    <p class="tip" style="margin-top:17px">
+      <b>恢复备份</b>：读入 popup 导出的 <code>jd_backup.json</code>。
+      按 key 合并 —— 同一条岗位以文件里的为准覆盖，本地多出来的记录不动，
+      <b>不会清空现有数据</b>。导入前会告诉你「覆盖几条、新增几条」让你确认。
+    </p>
+    <div class="bar" style="margin-top:9px">
+      <button class="ghost" id="importJds">恢复备份…</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
   </fieldset>
 
   <!-- 这一节的内容是从 popup 搬过来的。popup 每天开几十次，

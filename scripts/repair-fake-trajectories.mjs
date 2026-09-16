@@ -90,4 +90,4 @@ if (!doWrite) {
 const dest = file.replace(/\.json$/, "") + ".repaired.json";
 writeFileSync(dest, JSON.stringify(Array.isArray(raw) ? out : { ...raw, jds: out }, null, 2), "utf8");
 console.log("\n写到了 " + dest + "（原文件没动）。");
-console.log("导回插件：设置页的「导入备份」选这个文件。");
+console.log("导回插件：打开扩展的**设置页** → 最下面「本地数据」那一节 → 「恢复备份…」选这个文件。");

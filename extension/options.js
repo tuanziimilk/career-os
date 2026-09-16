@@ -1,3 +1,4 @@
+import { mergeBackup } from "./lib/jdMerge.js";
 import {
   getSettings, saveSettings, chatOnce, explainError,
   getUsageTotal, resetUsage, fmtCost, PRICING_ESTIMATE } from "./lib/llm.js";
@@ -309,6 +310,65 @@ $("test").onclick = async () => {
   } catch (e) {
     setStatus(explainError(e.message), "bad");
   }
+};
+
+/* 恢复备份。⚠️ 这是这一页唯一会**覆盖采集数据**的操作，所以：
+ *   · 先算清楚"覆盖几条、新增几条"再问，而不是问完了才知道动了什么
+ *   · 明说同 key 是整条覆盖，导出之后改过的会被盖回去
+ *   · 文件读坏了一律不写 —— 半个导入比不导入糟得多
+ */
+$("importJds").onclick = () => $("importFile").click();
+
+$("importFile").onchange = async (e) => {
+  const f = e.target.files && e.target.files[0];
+  // 选完文件就把 input 清空，否则连着选同一个文件第二次不触发 change
+  e.target.value = "";
+  if (!f) return;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(await f.text());
+  } catch (err) {
+    setStatus("这个文件不是合法 JSON，没动任何数据。", "bad");
+    return;
+  }
+  // popup 导出的是数组；万一有人塞了整个 storage 快照，也认一下 .jds
+  const inc = Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.jds) ? parsed.jds : null;
+  if (!inc) {
+    setStatus("文件里找不到记录数组，没动任何数据。确认导出的是 popup 的「备份 JSON」。", "bad");
+    return;
+  }
+  if (!inc.length) {
+    setStatus("文件里一条记录都没有，没动任何数据。", "bad");
+    return;
+  }
+
+  const { jds = [] } = await chrome.storage.local.get({ jds: [] });
+  const { next, replaced, added, skipped } = mergeBackup(jds, inc);
+
+  const lines = [
+    "从「" + f.name + "」恢复：",
+    "",
+    "  覆盖 " + replaced + " 条（同一岗位以文件里的为准）",
+    "  新增 " + added + " 条",
+  ];
+  if (skipped) lines.push("  跳过 " + skipped + " 条（没有 key，定位不了）");
+  lines.push(
+    "",
+    "本地现有 " + jds.length + " 条，导入后 " + next.length + " 条。",
+    "本地多出来的记录不会被删。",
+    "",
+    "⚠️ 导出这个文件之后你在插件里改过的那几条，会被文件里的旧值盖掉，且不可撤销。"
+  );
+  /* 取消也要给回执。不给的话上一条状态还挂在那儿，
+     看起来像"我点了取消但它报了个错"。 */
+  if (!confirm(lines.join("\n"))) {
+    setStatus("取消了，没动任何数据。", "");
+    return;
+  }
+
+  await chrome.storage.local.set({ jds: next });
+  setStatus("已恢复：覆盖 " + replaced + " 条，新增 " + added + " 条。现在共 " + next.length + " 条。", "ok");
 };
 
 $("clearProfile").onclick = async () => {

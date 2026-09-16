@@ -140,3 +140,39 @@ export function mergeJd(old, rec, now) {
 
   return merged;
 }
+
+/** 恢复备份：把导入的记录按 key 合并进本地，返回结果和一份可以给人看的账。
+ *
+ * ⚠️ 语义是**整条覆盖**，不是字段级合并。
+ * 理由：这个功能的主要用途是"导出 → 在外面改 → 导回来"（比如修被伪造的
+ * 状态轨迹）。字段级合并会把你刚在外面删掉的东西又合回来，
+ * 那就白改了。所以同 key 直接换成文件里那条。
+ *
+ * 代价是：导出之后又在插件里改过的那几条，会被文件里的旧值盖掉。
+ * 这个代价必须在确认框里说清楚——它不可撤销。
+ *
+ * 本地多出来的记录一律保留：导入不是"恢复到那一刻的快照"，
+ * 那样会静默删掉你导出之后新采的岗位。要清空有「清空全部记录」。
+ *
+ * @returns {{next: object[], replaced: number, added: number, skipped: number}}
+ */
+export function mergeBackup(local, imported) {
+  const cur = Array.isArray(local) ? local : [];
+  const inc = Array.isArray(imported) ? imported : [];
+  const byKey = new Map(cur.map((r) => [r.key, r]));
+
+  let replaced = 0;
+  let added = 0;
+  let skipped = 0;
+  for (const r of inc) {
+    // 没有 key 的条目没法定位，也没法去重，只能跳过并报数——不能静默吞掉
+    if (!r || typeof r.key !== "string" || !r.key) {
+      skipped++;
+      continue;
+    }
+    if (byKey.has(r.key)) replaced++;
+    else added++;
+    byKey.set(r.key, r);
+  }
+  return { next: [...byKey.values()], replaced, added, skipped };
+}

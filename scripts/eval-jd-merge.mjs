@@ -23,6 +23,7 @@ import {
   isFallbackKey,
   LOCAL_ONLY_FIELDS,
   SALARY_FIELDS,
+  mergeBackup,
 } from "../extension/lib/jdMerge.js";
 
 let fail = 0;
@@ -241,3 +242,40 @@ if (fail) {
   process.exit(1);
 }
 console.log("全部断言通过");
+
+/* ─────────────────────────────────────────── 恢复备份 */
+console.log("");
+console.log("恢复备份：mergeBackup");
+
+/* ⚠️ 这个功能补的是一个真窟窿：popup 一直有「备份 JSON」却没有导回去的地方，
+   而采集数据只活在这台电脑的 chrome.storage 里。还不回去的备份不是备份。
+
+   核心语义是**整条覆盖 + 不删本地多出来的**，两条都得钉住：
+     · 不整条覆盖 → "导出→在外面改→导回来"这个用途就废了
+       （比如修被伪造的状态轨迹，字段级合并会把删掉的又合回来）
+     · 删本地多出来的 → 导出之后新采的岗位会被静默抹掉 */
+{
+  const local = [
+    { key: "boss:1", title: "旧标题", status: "已投" },
+    { key: "boss:2", title: "本地独有" },
+  ];
+  const file = [
+    { key: "boss:1", title: "文件里的标题", status: "已挂" },
+    { key: "boss:3", title: "文件里独有" },
+  ];
+  const r = mergeBackup(local, file);
+  check("覆盖计数", r.replaced === 1, "replaced=" + r.replaced);
+  check("新增计数", r.added === 1, "added=" + r.added);
+  const m = Object.fromEntries(r.next.map((x) => [x.key, x]));
+  check("同 key 是**整条**覆盖，不是字段级合并", m["boss:1"].title === "文件里的标题" && m["boss:1"].status === "已挂");
+  check("本地多出来的记录留着（不是恢复成快照）", !!m["boss:2"]);
+  check("文件里多出来的加进来", !!m["boss:3"]);
+  check("总数对", r.next.length === 3, String(r.next.length));
+}
+{
+  const r = mergeBackup([{ key: "a" }], [{ nokey: 1 }, null, { key: "" }]);
+  check("没有 key 的条目跳过并**报数**（不能静默吞掉）", r.skipped === 3, "skipped=" + r.skipped);
+  check("跳过的不影响本地", r.next.length === 1);
+}
+check("传 null 不炸", mergeBackup(null, null).next.length === 0);
+check("空文件不改动本地", mergeBackup([{ key: "a" }], []).next.length === 1);

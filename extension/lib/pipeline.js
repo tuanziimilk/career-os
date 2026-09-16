@@ -262,6 +262,53 @@ export function needsFollowUp(records, silentDays = 14) {
  * @returns {string} 阶段 id（"" / 想投 / 已投 / 进面 / 复面 / offer），
  *                   没有任何历史时返回 ""
  */
+/** 补录一个中间阶段，**插在末尾那串终止态之前**，返回新记录。
+ *
+ * ⚠️ 不能拿 pushStatus 代替。pushStatus 只往末尾追加，于是
+ * 「已投 → 已拒」补一个「进面」会变成 `已投 → 已拒 → 进面 → 已拒`，
+ * 读起来像"拒了之后又去面了一次又被拒"，而且时间戳是今天的
+ * —— 那一面其实发生在上个月。
+ *
+ * 时间戳取前后两条的中点：真实时间没人知道，但它一定落在这两条之间，
+ * 中点是唯一不会造出"面试发生在投递之前/拒信之后"的取值。
+ *
+ * ⚠️ 历史条目的时间字段叫 `at`，不是 `ts`——`ts` 是**记录本身**的
+ * 采集时间，两个名字差一点，写错了不报错，只是时间戳全变 undefined。
+ * 下面那条 eval 就是为了钉住这个字段名。
+ *
+ * @param {string} stage 要补的阶段；传空字符串表示"其实还没投"，撤掉补过的中间档
+ */
+export function insertStageBefore(rec, stage) {
+  const hist = Array.isArray(rec && rec.statusHistory) ? rec.statusHistory.slice() : [];
+  if (!hist.length) return rec;
+
+  // 末尾那一串终止态的起点
+  let at = hist.length;
+  for (let k = hist.length - 1; k >= 0; k--) {
+    if (isTerminal(hist[k].status)) at = k;
+    else break;
+  }
+  if (at === 0) return rec; // 整条历史都是终止态，没有可以插进去的位置
+  if (hist[at - 1].status === stage) return rec; // 已经是这一档了
+
+  if (!stage) {
+    // "其实还没投"：把首条和终止态之间补过的中间档清掉
+    return { ...rec, statusHistory: hist.filter((h, k) => k === 0 || k >= at) };
+  }
+
+  const a = Date.parse(hist[at - 1].at || "");
+  const b = at < hist.length ? Date.parse(hist[at].at || "") : NaN;
+  const mid =
+    Number.isFinite(a) && Number.isFinite(b)
+      ? new Date((a + b) / 2).toISOString()
+      : at < hist.length
+        ? hist[at].at
+        : new Date().toISOString();
+
+  hist.splice(at, 0, { status: stage, at: mid });
+  return { ...rec, statusHistory: hist };
+}
+
 export function endedAtStage(rec) {
   const hist = (rec && rec.statusHistory) || [];
   // 倒着找第一个非终止态 —— 那就是它挂之前停在哪

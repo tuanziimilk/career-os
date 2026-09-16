@@ -5,12 +5,14 @@
 "use strict";
 
 import {
+  STATUS_CYCLE,
   MAIN_CYCLE,
   FAIL_GROUPS,
   FAIL_REASONS,
   pushStatus,
   isTerminal,
   endedAtStage,
+  insertStageBefore,
 } from "./lib/pipeline.js";
 import { parseSalary, formatSalary } from "./lib/salary.js";
 import {
@@ -37,7 +39,7 @@ const EMPTY_HTML =
 const firstLine = (s) => (s || "").split("\n")[0].trim();
 let CACHE = [];
 
-/* 打标：两个维度，点击循环切换。
+/* 打标：两个维度，两栏原生下拉（2026-09-16 从点击循环改的，理由见 render 里）。
  * 刻意不在采集时问——采集要一次点击不打断浏览，标签是回头整理时才需要的东西。 */
 /* ⚠️ 这三个 emoji 是**存进云端的枚举值**（types.ts 的 Intent，工作台也读它），
  * 不能因为界面不想显示 emoji 就改掉——那会让已有记录和云端对不上。
@@ -51,11 +53,6 @@ function markScrollable() {
   const w = $("listwrap");
   if (!l || !w) return;
   w.classList.toggle("scrollable", l.scrollHeight > l.clientHeight + 2);
-}
-
-function nextIn(cycle, cur) {
-  const i = cycle.indexOf(cur || "");
-  return cycle[(i + 1) % cycle.length];
 }
 
 /** 补录薪资。一次把三个相关字段一起写，避免出现"有 salary 但 salaryParsed 是旧值"
@@ -124,98 +121,141 @@ async function setField(key, field, value) {
   render();
 }
 
-/** querySelector 里要用的转义。key 带冒号（`boss:12345678`），不转义选择器直接报错。 */
-function cssEscape(s) {
-  return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(s) : String(s).replace(/:/g, "\\:");
+/* ── 归因：第三栏下拉 + 选完之后的阶段确认 ──────────────────────
+ *
+ * ⚠️ 这里换过两版，两版都不对，原因记下来免得再走回去：
+ *
+ *   v0 `prompt("挂在哪一环？填序号…")` —— 要人肉数到第几条再输数字，
+ *      选错没有反馈，而且原生弹窗放不下判据。
+ *   v1 自绘的一列按钮 —— 判据能放下了，但它和这一行里其他控件长得不一样，
+ *      而且十一条按钮把列表撑得老长。
+ *
+ * v2 用原生 <select> + optgroup：和左边两栏同一种控件，选项由浏览器
+ * 渲染在窗口之外（不受 popup 330px 宽度限制），判据跟在选项文字后面。
+ */
+function buildReasonSelect(rec) {
+  const sf = document.createElement("select");
+  sf.className = "pick reason" + (rec.failReason ? "" : " pend");
+  sf.title = "为什么挂的";
+
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "＋归因";
+  if (!rec.failReason) blank.selected = true;
+  sf.appendChild(blank);
+
+  /* 按组分。⚠️ 组不是装饰：后三组不计入失败率，
+     「HC 冻结」和「技术被问穿」对复盘的指向完全相反，
+     摆在同一个平铺列表里会让人以为它们是一类东西。 */
+  for (const g of FAIL_GROUPS) {
+    const og = document.createElement("optgroup");
+    og.label = g.label + (g.countsAsFailure ? "" : "（不计入失败率）");
+    for (const fr of FAIL_REASONS) {
+      if (fr.group !== g.id) continue;
+      const o = document.createElement("option");
+      o.value = fr.id;
+      /* 判据跟在名字后面，不是文案修辞：
+         「技术被问穿 = 我确实不知道」和「讲不明白 = 我知道但没讲清楚」
+         就是这两个桶的分界线本身。不写判据，两个桶会互相污染，
+         最后"该补技术还是练表达"的统计是假的。 */
+      /* ⚠️ 已选中的那条**不带判据**。select 收起来时显示的是选中项的全文，
+         带上判据会被截成「讲不明白　——」，尾巴那截破折号看着像渲染坏了。
+         判据是给"还没选"的时候看的，选完了它已经完成使命。 */
+      const chosen = fr.id === rec.failReason;
+      o.textContent = fr.id + (fr.hint && !chosen ? "　—— " + fr.hint : "");
+      if (chosen) o.selected = true;
+
+      og.appendChild(o);
+    }
+    sf.appendChild(og);
+  }
+
+  sf.onchange = async () => {
+    const reason = sf.value;
+    if (!reason) return;
+    await setField(rec.key, "failReason", reason);
+    openStageConfirm(rec.key); // 归因记下了，再问"挂在哪一环"
+  };
+  return sf;
 }
 
-/* 归因选择器。取代原来那个 `prompt("挂在哪一环？填序号…")`。
- *
- * ⚠️ 为什么不能继续用 prompt：
- *   1. 原生弹窗样式完全不受控，在扩展里长得像个报错
- *   2. **要人肉输序号**。十一个选项靠数数字选，选错了没有任何反馈
- *   3. 放不下判据。而「技术被问穿」和「讲不明白」不给判据就会被随便选，
- *      两个桶互相污染，最后"该补技术还是练表达"的统计就是假的
- *   4. 它挡住整个界面，看不到自己正在给哪一条归因
- *
- * 改成在列表里**原地展开**一层，和薪资补录那个 chip 同一个套路。
- */
+/** 让归因下拉出现在眼前并展开（状态刚被选成终止态时调） */
 function openFailPicker(key) {
-  const rec = CACHE.find((x) => x.key === key);
-  if (!rec) return;
-
-  // 已经开着就收起来（再点一次 = 取消）
-  const existing = document.querySelector(".failpick");
-  const sameOne = existing && existing.dataset.key === key;
-  if (existing) existing.remove();
-  if (sameOne) return;
-
-  const row = document.querySelector('[data-row="' + cssEscape(key) + '"]');
+  const row = rowEl(key);
   if (!row) return;
+  const sel = row.querySelector("select.reason");
+  if (!sel) return;
+  sel.focus();
+  row.scrollIntoView({ block: "nearest" });
+}
+
+/* 阶段确认。**选完归因才出现**，展开在这一行下面。
+ *
+ * ⚠️ 为什么要有这一步、而不是直接信 endedAtStage：
+ * 它的前提是你逐档标记过，而真实情况常常是
+ * 「投完 → 过两周面了一次 → 挂了」—— 中间没标过「进面」的话，
+ * 历史里只有 `已投 → 已挂`，它就会说"挂在已投"，而你实际面到了一面。
+ * **归因会因此系统性偏向早期阶段。**
+ * 所以把推断结果摆出来让人一眼看见它猜得对不对，而不是默默记下去。
+ */
+function openStageConfirm(key) {
+  const rec = CACHE.find((x) => x.key === key);
+  const row = rowEl(key);
+  if (!rec || !row) return;
+
+  const old = document.querySelector(".stageconfirm");
+  if (old) old.remove();
 
   const box = document.createElement("div");
-  box.className = "failpick";
+  box.className = "stageconfirm";
   box.dataset.key = key;
 
-  /* 阶段：推断出来**并且允许改**。
-     endedAtStage 会经常推不准——没逐档标记过的话，
-     「投完 → 过两周面了一次 → 挂了」会被推成"挂在已投"。
-     所以显示出来让人一眼看见它猜得对不对，而不是默默记下去。 */
-  const guessed = rec.status && !isTerminal(rec.status) ? rec.status : endedAtStage(rec);
-  const stageRow = document.createElement("div");
-  stageRow.className = "fp-stage";
-  const stageLabel = document.createElement("span");
-  stageLabel.textContent = "挂在";
-  const stageSel = document.createElement("select");
+  const lead = document.createElement("span");
+  lead.textContent = "挂在";
+  const sel = document.createElement("select");
+  sel.className = "pick";
+  const guessed = endedAtStage(rec);
   for (const st of MAIN_CYCLE) {
     const o = document.createElement("option");
     o.value = st;
     o.textContent = st || "还没投";
     if (st === guessed) o.selected = true;
-    stageSel.appendChild(o);
+    sel.appendChild(o);
   }
-  const stageTail = document.createElement("span");
-  stageTail.textContent = "这一环——猜错了就改它";
-  stageRow.append(stageLabel, stageSel, stageTail);
-  box.appendChild(stageRow);
+  const tail = document.createElement("span");
+  tail.textContent = "这一环 —— 猜错了就改它";
 
-  // 归因：按组分隔，每条带判据
-  let lastGroup = null;
-  for (const fr of FAIL_REASONS) {
-    if (fr.group !== lastGroup) {
-      lastGroup = fr.group;
-      const g = FAIL_GROUPS.find((x) => x.id === fr.group);
-      const h = document.createElement("div");
-      h.className = "fp-group";
-      h.textContent = (g ? g.label : fr.group) + (g && !g.countsAsFailure ? "（不计入失败率）" : "");
-      box.appendChild(h);
-    }
-    const b = document.createElement("button");
-    b.className = "fp-item" + (rec.failReason === fr.id ? " cur" : "");
-    const t = document.createElement("b");
-    t.textContent = fr.id;
-    b.appendChild(t);
-    if (fr.hint) {
-      const s = document.createElement("span");
-      s.textContent = fr.hint;
-      b.appendChild(s);
-    }
-    b.onclick = async () => {
-      box.remove();
-      /* ⚠️ 顺序：先补阶段，再落终止态。
-         反过来的话终止态会盖在最后，endedAtStage 就再也看不到那一档了。 */
-      const stage = stageSel.value;
-      if (!isTerminal(rec.status)) {
-        if (stage && stage !== rec.status) await setField(key, "status", stage);
-        await setField(key, "status", "已挂");
-      }
-      await setField(key, "failReason", fr.id);
-    };
-    box.appendChild(b);
-  }
+  const ok = document.createElement("button");
+  ok.className = "chip";
+  ok.textContent = "就这样";
+  ok.onclick = () => box.remove();
 
+  sel.onchange = async () => {
+    await insertStageBeforeTerminal(key, sel.value);
+    box.remove();
+  };
+
+  box.append(lead, sel, tail, ok);
   row.appendChild(box);
   box.scrollIntoView({ block: "nearest" });
+}
+
+/** 阶段补录的存储层。真正的历史改写在 pipeline.js 的 insertStageBefore()
+ *  里（纯函数，有 eval 钉着）；这里只负责读写 chrome.storage。 */
+async function insertStageBeforeTerminal(key, stage) {
+  const { jds = [] } = await chrome.storage.local.get({ jds: [] });
+  const i = jds.findIndex((x) => x.key === key);
+  if (i < 0) return;
+  jds[i] = insertStageBefore(jds[i], stage);
+  await chrome.storage.local.set({ jds });
+  CACHE = jds;
+  render();
+}
+
+/** 按 key 找到列表里那一行。key 带冒号（`boss:12345678`），选择器要转义。 */
+function rowEl(key) {
+  const esc = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(key) : String(key).replace(/:/g, "\\:");
+  return document.querySelector('[data-row="' + esc + '"]');
 }
 
 const SITE_NAME = {
@@ -317,35 +357,49 @@ function render() {
       // 两个可点切换的标签
       const tags = document.createElement("div");
       tags.className = "tags";
-      const bi = document.createElement("button");
-      bi.className = "chip" + (r.intent ? " on" : "");
-      bi.textContent = r.intent ? INTENT_LABEL[r.intent] : "＋意向";
-      bi.title = "点击切换：未定 → 想投 → 观察 → 不考虑";
-      bi.onclick = () => setField(r.key, "intent", nextIn(INTENT_CYCLE, r.intent));
-      /* ── 状态：拆成「主线前进」和「挂了」两个控件 ────────────────
+      /* ── 意向、状态：两栏原生下拉 ────────────────────────────
        *
-       * ⚠️ 2026-09-16 改。原来是一个 chip 在 8 档里循环点击，
-       * 而那不是"不好用"，是**在伪造求职经历**：标成「已拒」要点 7 下，
-       * 每一下 pushStatus 都写一条带时间戳的历史，于是漏斗认为这条
-       * 「曾经到达过 已投/进面/复面/offer」。实测一条从没投过的记录
-       * 会被算进 applied=1、offer=1，而且不报错、轨迹看起来完全正常。
+       * ⚠️ 2026-09-16 改。原来两个都是"点一下换下一档"的 chip。
+       * 循环点击在这里是错的，而且错法不止一种：
        *
-       * 拆开之后：主线最多走到 offer，终止态一步到位 + 当场归因。
+       *   1. **它在伪造求职经历。** 状态那一栏要标成「已拒」得点 7 下，
+       *      每一下 pushStatus 都写一条带时间戳的历史，于是漏斗认为这条
+       *      「曾经到达过 已投/进面/复面/offer」。实测一条从没投过的记录
+       *      会被算进 applied=1、offer=1，不报错，轨迹看起来完全正常。
+       *   2. **看不见有哪些选项。** 得靠 title 文字或者一路点过去才知道。
+       *   3. **点过头只能再绕一圈。** 意向那栏四档，点错了要再点三下。
+       *
+       * 下拉一次性解决这三条：选项全摆出来，直达，且只写一条历史。
+       * 用原生 <select> 不自绘：popup 只有 330px 宽，自绘的浮层要么被裁，
+       * 要么得做定位逻辑，而原生的由浏览器渲染在窗口之外，不受宽度限制。
        */
-      const bs = document.createElement("button");
-      bs.className = "chip" + (r.status ? " on" : "");
-      bs.textContent = r.status || "＋状态";
-      const atEnd = r.status === "offer";
-      const isEnded = isTerminal(r.status);
-      bs.title = isEnded
-        ? "已经结束了。点它可以改归因"
-        : atEnd
-          ? "已经到 offer 了，主线走完"
-          : "点一下前进一档：想投 → 已投 → 进面 → 复面 → offer";
-      bs.onclick = async () => {
-        if (isEnded) return openFailPicker(r.key); // 终止态下点它 = 改归因
-        if (atEnd) return;
-        await setField(r.key, "status", nextIn(MAIN_CYCLE, r.status));
+      const si = document.createElement("select");
+      si.className = "pick";
+      si.title = "投不投这家";
+      for (const v of INTENT_CYCLE) {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = INTENT_LABEL[v];
+        if (v === (r.intent || "")) o.selected = true;
+        si.appendChild(o);
+      }
+      si.onchange = () => setField(r.key, "intent", si.value);
+
+      const ss = document.createElement("select");
+      ss.className = "pick" + (r.status ? " on" : "");
+      ss.title = "投递走到哪一步了";
+      for (const v of STATUS_CYCLE) {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = v || "未标记";
+        if (v === (r.status || "")) o.selected = true;
+        ss.appendChild(o);
+      }
+      ss.onchange = async () => {
+        await setField(r.key, "status", ss.value);
+        /* 选到终止态、且还没归因，就把归因下拉展开——
+           不弹窗、不强制，但要出现在眼前。事后再补是允许的（有「还不知道」）。 */
+        if (isTerminal(ss.value) && !r.failReason) openFailPicker(r.key);
       };
       // 薪资 chip。没抓到就是"＋薪资"，点一下原地变输入框——
       // 采集时不打断，回头在这里一次性把待补的几条填完。
@@ -386,27 +440,13 @@ function render() {
         inp.select();
       };
       tags.appendChild(bsal);
-      tags.appendChild(bi);
-      tags.appendChild(bs);
+      tags.appendChild(si);
+      tags.appendChild(ss);
 
-      /* 「挂了」独立成一个按钮。理由：终止**是从任何阶段都可能发生的事件**，
-         不是漏斗的下一档——把它塞进主线循环，就逼着人从当前档一路点过去。 */
-      if (!isEnded) {
-        const bx = document.createElement("button");
-        bx.className = "chip end";
-        bx.textContent = "挂了";
-        bx.title = "结束这一条并记下原因";
-        bx.onclick = () => openFailPicker(r.key);
-        tags.appendChild(bx);
-      }
-
-      if (r.failReason) {
-        const bf = document.createElement("button");
-        bf.className = "chip note"; // 挂因是标注，不是开关，同理不用 .on
-        bf.textContent = r.failReason;
-        bf.title = "挂掉原因，点击修改";
-        bf.onclick = () => openFailPicker(r.key);
-        tags.appendChild(bf);
+      /* 归因：第三栏下拉，只在状态是终止态时出现。
+         ⚠️ 它不常驻。没挂的记录上摆一个「为什么挂的」是在问一个不存在的问题。 */
+      if (isTerminal(r.status)) {
+        tags.appendChild(buildReasonSelect(r));
       }
 
       // 删除推到最右边、和其他 chip 隔开——它是这一行里唯一不可逆的操作，

@@ -53,8 +53,8 @@ const out = recs.map((r) => {
      用"和下一条的间隔"而不是"和上一条"——因为要留的是段尾。 */
   const drop = hist.map((h, i) => {
     if (i === 0 || i === hist.length - 1) return false;
-    const t = Date.parse(h.ts || "");
-    const tn = Date.parse(hist[i + 1]?.ts || "");
+    const t = Date.parse(h.at || "");
+    const tn = Date.parse(hist[i + 1]?.at || "");
     if (!Number.isFinite(t) || !Number.isFinite(tn)) return false; // 时间戳坏了就不动它
     return tn - t < GAP_MS;
   });

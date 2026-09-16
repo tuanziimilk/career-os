@@ -101,7 +101,9 @@
   }
   .item .m { color: var(--ink2); font: 12px/1.5 var(--sans); }
   .item .warn { color: var(--warn); }
-  .tags { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  /* ⚠️ 必须 wrap。三栏下拉 + 薪资 + 删除在 330px 里放不下，
+     不换行的话「删除」会被挤出可视区，而那一行会长出一条横向滚动条。 */
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
 
   /* ── chip 三类，权重刻意分开 ──────────────────────────────
      这一行里有三种东西，之前它们长得一样或者反了：
@@ -150,9 +152,6 @@
   }
   .chip.sal.pend:hover { background: var(--warn-soft); }
 
-  /* 挂因也是标注不是开关 */
-  .chip.note { background: var(--sunk); border-color: transparent; color: var(--ink2); }
-
   /* 3. 删除。默认中性，只在悬停时变红。
      ⚠️ 原来它常态就是红字红边——三行列表下来是一条红柱，比内容还吸睛，
      而一直红的红色等于没有红色。危险色留给"你正要动手"的那一刻。 */
@@ -169,43 +168,34 @@
   }
   .salinput:focus { outline: none; box-shadow: 0 0 0 3px var(--acc-soft); }
 
-  /* 「挂了」。和删除同属"这一步之后不太好回头"，但它是**记录**不是销毁，
-     所以只用虚线边示意"这是个岔路口"，不借用删除的红。 */
-  .chip.end { border-style: dashed; color: var(--muted); }
-  .chip.end:hover { color: var(--ink); border-color: var(--rule-strong); border-style: solid; }
+  /* ── 意向 / 状态 / 归因：三栏原生 <select> ────────────────────
+     ⚠️ 刻意用原生下拉，不自绘浮层：popup 只有 330px 宽，
+     自绘的选项列表要么被窗口裁掉，要么得写一套定位逻辑；
+     原生 select 的选项由浏览器渲染在窗口之外，不受这个宽度限制，
+     也因此才放得下每条归因后面那段判据。 */
+  .pick {
+    flex: 0 1 auto; min-width: 0; max-width: 92px;
+    padding: 3px 4px; font: 500 11.5px/1.35 var(--sans);
+    border: 1px solid var(--rule); border-radius: var(--r-sm);
+    background: var(--card); color: var(--ink2); cursor: pointer;
+  }
+  .pick:hover { border-color: var(--acc); color: var(--ink); }
+  .pick:focus { outline: none; box-shadow: 0 0 0 3px var(--acc-soft); }
+  /* 标过的状态要能一眼扫出来。用淡底 + 深字，不用黑底：
+     黑底留给「打开情报台」那一个主动作。 */
+  .pick.on { background: var(--acc-soft); border-color: var(--rule-strong); color: var(--ink); }
+  /* 归因这一栏本身就比另外两栏长（选项带判据），给它多一点宽度 */
+  .pick.reason { max-width: 104px; }
+  /* 挂了但还没归因 —— 这一行里唯一需要你回头补的东西，和待补薪资同一个处理 */
+  .pick.reason.pend { color: var(--warn); border: 1px dashed var(--warn); }
 
-  /* ── 归因选择器。原地展开，替掉 prompt() ─────────────────────
-     ⚠️ 十一个选项要塞进 popup 的窄宽度里还得可读，所以：
-       · 判据（hint）和选项名同一行、次级字色——分两行的话整块高度翻倍，
-         滚动起来就看不到自己在给哪条归因了
-       · 组标题不用填色，只靠字号和留白分隔（这套配色里填色是稀缺资源） */
-  .failpick {
-    margin: 8px 0 2px; padding: 8px; border: 1px solid var(--rule-strong);
-    border-radius: var(--r-sm); background: var(--sunk);
-  }
-  .fp-stage {
+  /* 阶段确认：选完归因之后展开在这一行下面的一条 */
+  .stageconfirm {
     display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-    font: 12px/1.5 var(--sans); color: var(--ink2); margin-bottom: 8px;
-  }
-  .fp-stage select {
-    font: 500 12px/1 var(--sans); padding: 3px 4px;
+    margin: 8px 0 2px; padding: 7px 8px;
     border: 1px solid var(--rule-strong); border-radius: var(--r-sm);
-    background: var(--card); color: var(--ink);
+    background: var(--sunk); font: 12px/1.5 var(--sans); color: var(--ink2);
   }
-  .fp-group {
-    font: 600 11px/1 var(--sans); color: var(--muted);
-    margin: 10px 0 4px; letter-spacing: .04em;
-  }
-  .fp-group:first-of-type { margin-top: 0; }
-  .fp-item {
-    display: block; width: 100%; text-align: left; cursor: pointer;
-    padding: 5px 6px; margin: 0; border: 1px solid transparent;
-    border-radius: var(--r-sm); background: transparent;
-  }
-  .fp-item b { font: 600 12px/1.4 var(--sans); color: var(--ink); }
-  .fp-item span { font: 11.5px/1.4 var(--sans); color: var(--muted); margin-left: 6px; }
-  .fp-item:hover { background: var(--card); border-color: var(--rule); }
-  .fp-item.cur { background: var(--acc-soft); border-color: var(--rule-strong); }
   /* 空状态承担首次使用的引导。⚠️ 上一轮把顶部那两行操作说明搬去设置页，
      却没同步加强这里——结果新用户打开弹窗只看到「还没有存任何 JD」，
      完全不知道该干什么。搬走常驻文案的前提是空状态得接住它。 */

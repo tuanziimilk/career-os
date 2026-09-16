@@ -27,6 +27,7 @@ import {
   FAIL_BUCKETS,
   countsAsFailure,
   endedAtStage,
+  insertStageBefore,
   failBreakdown,
   isTerminal,
   pushStatus,
@@ -126,6 +127,66 @@ check(
   "【已知洞】只标过「已投」就挂了的记录，会被推成挂在已投（实际可能面过）",
   endedAtStage({ status: "已挂", statusHistory: [{ status: "已投" }, { status: "已挂" }] }) ===
     "已投"
+);
+
+/* ─────────────────────────────────────────── 2b. 补录中间阶段 */
+group("2b. insertStageBefore：补一档要插在终止态前面");
+
+/* ⚠️ 这一节全都用 `at` 而不是 `ts`。
+   我第一版三处代码全写成了 `ts`，而 `ts` 是**记录本身**的采集时间，
+   历史条目的时间字段叫 `at`。写错不报错，只是时间戳静默变 undefined，
+   而上面那些只看 status 的断言照样全绿。所以第一条断言就钉字段名。 */
+{
+  const pushed = pushStatus({ status: "已投", ts: "2026-09-01T00:00:00.000Z" }, "已拒");
+  const last = pushed.statusHistory[pushed.statusHistory.length - 1];
+  check(
+    "pushStatus 写的时间字段叫 at（不是 ts）",
+    typeof last.at === "string" && last.at.length > 0 && last.ts === undefined,
+    JSON.stringify(last)
+  );
+}
+
+const ended = {
+  status: "已拒",
+  statusHistory: [
+    { status: "已投", at: "2026-08-01T00:00:00.000Z" },
+    { status: "已拒", at: "2026-08-21T00:00:00.000Z" },
+  ],
+};
+{
+  const r = insertStageBefore(ended, "进面");
+  const h = r.statusHistory;
+  check(
+    "补的那一档插在终止态**前面**",
+    h.map((x) => x.status).join(" → ") === "已投 → 进面 → 已拒",
+    h.map((x) => x.status).join(" → ")
+  );
+  check("补的那一档有时间戳，且字段叫 at", typeof h[1].at === "string" && h[1].at.length > 0, h[1].at);
+  check(
+    "时间戳落在前后两条之间（不是今天）",
+    Date.parse(h[0].at) < Date.parse(h[1].at) && Date.parse(h[1].at) < Date.parse(h[2].at),
+    h[1].at
+  );
+  check("整条历史时间递增", h.every((x, i) => i === 0 || Date.parse(h[i - 1].at) <= Date.parse(x.at)));
+  check("status 字段本身不动", r.status === "已拒");
+  check("endedAtStage 现在读得出补的这一档", endedAtStage(r) === "进面");
+}
+check(
+  "补的和已有的是同一档时不重复插",
+  insertStageBefore(ended, "已投").statusHistory.length === 2
+);
+check(
+  "传空字符串 = 撤掉补过的中间档",
+  insertStageBefore(insertStageBefore(ended, "进面"), "").statusHistory.map((x) => x.status).join(" → ") ===
+    "已投 → 已拒"
+);
+check("空历史不炸", insertStageBefore({ status: "已挂" }, "已投").statusHistory === undefined);
+check(
+  "整条历史都是终止态时不插（没有合法的插入位置）",
+  insertStageBefore(
+    { status: "已挂", statusHistory: [{ status: "已挂", at: "2026-08-01T00:00:00.000Z" }] },
+    "已投"
+  ).statusHistory.length === 1
 );
 
 /* ─────────────────────────────────────────── 3. 归因分组 */

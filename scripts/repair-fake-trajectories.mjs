@@ -27,6 +27,7 @@
  * 起点那条（采集/首档）永远保留 —— 它不是点出来的。
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import { STATUS_CYCLE } from "../extension/lib/pipeline.js";
 
 const GAP_MS = 90 * 1000; // 90 秒。连点是秒级，真实流转是天级，中间这段空得很
 
@@ -43,8 +44,6 @@ if (!recs.length) {
   console.error("这个文件里没有记录。确认导出的是 popup 的「备份 JSON」。");
   process.exit(2);
 }
-
-import { STATUS_CYCLE, isTerminal } from "../extension/lib/pipeline.js";
 
 /** 这一档在漏斗里的位置。认不出的（空串、"采集"）返回 -1。 */
 function rank(status) {

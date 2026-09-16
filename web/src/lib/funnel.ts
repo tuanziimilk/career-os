@@ -24,17 +24,57 @@ export const STAGES: Stage[] = [
 export const TERMINAL: Status[] = ["已挂", "已拒"];
 export const STATUS_CYCLE: Status[] = ["", "想投", "已投", "进面", "复面", "offer", "已挂", "已拒"];
 
-export const FAIL_BUCKETS = [
-  "简历没过",
-  "笔试挂",
-  "一面挂-项目深挖",
-  "一面挂-概念不熟",
-  "一面挂-表达散",
-  "二面挂",
-  "薪资谈崩",
-  "我主动放弃",
-  "岗位关闭",
+/** 主线：点一下前进一档。**不含终止态**。
+ *  为什么拆开、以及原来的循环点击怎么在伪造求职经历，
+ *  见 `extension/lib/pipeline.js` 同名常量上方那段。 */
+export const MAIN_CYCLE: Status[] = ["", "想投", "已投", "进面", "复面", "offer"];
+
+export interface FailGroup {
+  id: string;
+  label: string;
+  countsAsFailure: boolean;
+}
+export interface FailReason {
+  id: string;
+  group: string;
+  hint: string;
+}
+
+/** 挂掉的归因。2026-09-16 重做 —— 原来的桶把「挂在哪一环」和「为什么挂」
+ *  混在一起，既冗余（阶段已经在 statusHistory 里）又不够（缺「没有回音」）。
+ *  完整理由写在 `extension/lib/pipeline.js` 的同名常量上方。
+ *
+ *  ⚠️ 两端必须逐字一致，`check-shared.mjs` 第三节会校验。 */
+export const FAIL_GROUPS: FailGroup[] = [
+  { id: "待改进", label: "可以改的", countsAsFailure: true },
+  { id: "外部", label: "外部因素", countsAsFailure: false },
+  { id: "我的选择", label: "我的选择", countsAsFailure: false },
+  { id: "待定", label: "还没想清楚", countsAsFailure: false },
 ];
+
+export const FAIL_REASONS: FailReason[] = [
+  { id: "没有回音", group: "待改进", hint: "投了之后一直没动静" },
+  { id: "明确拒信", group: "待改进", hint: "收到拒信但没说原因 —— 至少说明简历被人看过" },
+  { id: "背景不符", group: "待改进", hint: "学历/年限/行业硬门槛。这是我自己的判断，未必是对方的理由" },
+  { id: "技术被问穿", group: "待改进", hint: "对方追问细节，我确实不知道" },
+  { id: "讲不明白", group: "待改进", hint: "我知道，但没讲清楚；事后想想能答" },
+  { id: "方向不匹配", group: "待改进", hint: "双方都觉得不是一路的" },
+  { id: "薪资没谈拢", group: "待改进", hint: "" },
+  { id: "岗位没了", group: "外部", hint: "HC 冻结 / 岗位关闭 / 转内推" },
+  { id: "我主动退出", group: "我的选择", hint: "流程还在，但我不想继续了" },
+  { id: "我拒了 offer", group: "我的选择", hint: "" },
+  { id: "还不知道", group: "待定", hint: "先标上，想明白再回来补" },
+];
+
+export const FAIL_BUCKETS = FAIL_REASONS.map((r) => r.id);
+
+/** 这条归因算不算「我的失败」。外部因素和我主动的选择都不算。 */
+export function countsAsFailure(reason: string): boolean {
+  const r = FAIL_REASONS.find((x) => x.id === reason);
+  if (!r) return true;
+  const g = FAIL_GROUPS.find((x) => x.id === r.group);
+  return g ? g.countsAsFailure : true;
+}
 
 export function isTerminal(status: Status): boolean {
   return TERMINAL.includes(status);
@@ -171,12 +211,64 @@ export function needsFollowUp(records: JobRecord[], silentDays = 14): FollowUpIt
 }
 
 /** 挂掉原因分桶，按数量降序 */
-export function failBreakdown(records: JobRecord[]): [string, number][] {
+/** 这条记录挂在哪一档 —— 从 statusHistory 推断。
+ *  ⚠️ 它会经常推不准（没逐档标记时会偏向早期阶段），调用方必须允许人改。
+ *  理由写在 `extension/lib/pipeline.js` 的同名函数上方。 */
+export function endedAtStage(rec: JobRecord): Status {
+  const hist = rec.statusHistory || [];
+  for (let i = hist.length - 1; i >= 0; i--) {
+    const s = (hist[i].status || "") as Status;
+    if (!isTerminal(s)) return s;
+  }
+  const cur = (rec.status || "") as Status;
+  return isTerminal(cur) ? "" : cur;
+}
+
+export interface FailBreakdown {
+  rows: [string, number][];
+  groups: { id: string; label: string; count: number; countsAsFailure: boolean }[];
+  total: number;
+  failures: number;
+  notMyFault: number;
+  unknown: number;
+}
+
+/** 挂掉归因的统计。**按组聚合，不是简单计数** ——
+ *  「岗位 HC 冻结了」和「我技术被问穿了」对复盘的指向完全相反，
+ *  混在一起会让漏斗显得比实际难看。 */
+export function failBreakdown(records: JobRecord[]): FailBreakdown {
   const m: Record<string, number> = {};
-  records.forEach((r) => {
+  let total = 0;
+  (records || []).forEach((r) => {
     if (!isTerminal(r.status)) return;
-    const k = r.failReason || "未归因";
+    total += 1;
+    // 没写归因的一律算成「还不知道」，不另立「未归因」桶 —— 两者是同一件事
+    const k = r.failReason || "还不知道";
     m[k] = (m[k] || 0) + 1;
   });
-  return Object.entries(m).sort((a, b) => b[1] - a[1]);
+
+  const rows = Object.entries(m).sort((a, b) => b[1] - a[1]) as [string, number][];
+
+  const groups = FAIL_GROUPS.map((g) => ({
+    id: g.id,
+    label: g.label,
+    countsAsFailure: g.countsAsFailure,
+    count: rows.reduce((n, [reason, c]) => {
+      const def = FAIL_REASONS.find((x) => x.id === reason);
+      const gid = def ? def.group : "待改进";
+      return gid === g.id ? n + c : n;
+    }, 0),
+  }));
+
+  const sum = (pred: (g: (typeof groups)[number]) => boolean) =>
+    groups.filter(pred).reduce((n, g) => n + g.count, 0);
+
+  return {
+    rows,
+    groups,
+    total,
+    failures: sum((g) => g.countsAsFailure),
+    notMyFault: sum((g) => !g.countsAsFailure && g.id !== "待定"),
+    unknown: sum((g) => g.id === "待定"),
+  };
 }

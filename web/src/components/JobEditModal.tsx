@@ -3,7 +3,7 @@
 // 保持和 jd-insight 扩展的 pushStatus 同一套语义：只在状态真的变了才追加历史。
 import { useState } from "react";
 import type { DataSource, JobRecord, Status } from "../lib/types";
-import { STATUS_CYCLE, FAIL_BUCKETS, isTerminal } from "../lib/funnel";
+import { STATUS_CYCLE, FAIL_GROUPS, FAIL_REASONS, isTerminal } from "../lib/funnel";
 import { parseSalary, formatSalary } from "../lib/salary";
 
 interface Props {
@@ -203,14 +203,24 @@ export function JobEditModal({ source, job, onClose, onSaved }: Props) {
             </select>
           </Field>
 
+          {/* ⚠️ 标题不再叫「挂在哪一环」——"哪一环"是阶段，已经在 statusHistory 里了。
+              这里问的是**为什么**。两者混为一谈正是旧归因桶的问题。 */}
           {isTerminal(status) && (
-            <Field label="挂在哪一环（归因）">
+            <Field label="为什么挂的">
               <select value={failReason} onChange={(e) => setFailReason(e.target.value)} disabled={!writable}>
-                <option value="">（未归因）</option>
-                {FAIL_BUCKETS.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
+                <option value="">（还没想清楚）</option>
+                {FAIL_GROUPS.map((g) => (
+                  <optgroup
+                    key={g.id}
+                    label={g.label + (g.countsAsFailure ? "" : "（不计入失败率）")}
+                  >
+                    {FAIL_REASONS.filter((r) => r.group === g.id).map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.id}
+                        {r.hint ? "　—— " + r.hint : ""}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </Field>

@@ -145,9 +145,16 @@ function parseGenerated(text) {
 
   const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const pairs = [
+    /* ⚠️ FAIL_REASONS 连 hint 一起比。判据不是文案修辞：
+       「技术被问穿 = 对方追问细节，我确实不知道」和
+       「讲不明白 = 我知道但没讲清楚」就是这两个桶的分界线本身。
+       两端 hint 飘了，同一件事在插件和工作台会被归进不同桶。 */
+    ["FAIL_GROUPS", ext.FAIL_GROUPS, web.FAIL_GROUPS],
+    ["FAIL_REASONS", ext.FAIL_REASONS, web.FAIL_REASONS],
     ["FAIL_BUCKETS", ext.FAIL_BUCKETS, web.FAIL_BUCKETS],
     ["TERMINAL", ext.TERMINAL, web.TERMINAL],
     ["STATUS_CYCLE", ext.STATUS_CYCLE, web.STATUS_CYCLE],
+    ["MAIN_CYCLE", ext.MAIN_CYCLE, web.MAIN_CYCLE],
     ["STAGES 的 id 顺序", ext.STAGES.map((s) => s.id), web.STAGES.map((s) => s.id)],
     [
       "STAGES 的 optional 标记",

@@ -37,18 +37,88 @@ export const TERMINAL = ["已挂", "已拒"];
 
 export const STATUS_CYCLE = ["", "想投", "已投", "进面", "复面", "offer", "已挂", "已拒"];
 
-/** 挂掉的原因分桶——这是复盘的核心，不分桶就不知道该改什么 */
-export const FAIL_BUCKETS = [
-  "简历没过",      // 投了没回音 / 明确拒
-  "笔试挂",
-  "一面挂-项目深挖",
-  "一面挂-概念不熟",
-  "一面挂-表达散",
-  "二面挂",
-  "薪资谈崩",
-  "我主动放弃",
-  "岗位关闭",
+/** 主线：点一下前进一档。**不含终止态** —— 那是 2026-09-16 改掉的核心。
+ *
+ * ⚠️ 原来的交互是拿 STATUS_CYCLE（含终止态）做循环点击，后果不是"不好用"，
+ * 是**在伪造求职经历**：要把一条标成「已拒」得点 7 下，而 pushStatus
+ * 每一下都写一条带时间戳的历史，于是漏斗认为这条岗位
+ * 「曾经到达过 已投 / 进面 / 复面 / offer」——
+ * 实测一条从没投过的记录会被算进 applied=1、offer=1。
+ *
+ * 它坏得最难发现：不报错、轨迹看起来是条正常的求职路径、
+ * 时间戳全在同一秒但没有任何东西会提醒你。
+ *
+ * 所以拆成两个控件：主线点击前进（最多到 offer），终止态走单独的「挂了」，
+ * 一步到位 + 当场归因。
+ */
+export const MAIN_CYCLE = ["", "想投", "已投", "进面", "复面", "offer"];
+
+/** 挂掉的归因。
+ *
+ * ══════════ 为什么重做（2026-09-16）══════════
+ *
+ * 原来的桶把**两个维度混在一起**：
+ *   简历没过 / 笔试挂 / 一面挂-X / 二面挂   ← 阶段（有的还带原因）
+ *   薪资谈崩 / 我主动放弃 / 岗位关闭        ← 纯原因
+ *
+ * 而「挂在哪一环」**已经在 statusHistory 里了**，不该再问一遍。
+ * 于是这张表既冗余（重复记阶段）又不够 —— 缺的全是纯原因，
+ * 其中最要命的是**「没有回音」**：求职里最常见的结局，
+ * 原来只能归进「简历没过」，而那是猜的。
+ *
+ * 现在：阶段由 `endedAtStage()` 推断（并允许人改），归因只问「为什么」。
+ *
+ * ══════════ 分组的意义不是好看 ══════════
+ *
+ * `外部` 和 `我的选择` 这两组**不该算进失败率**。
+ * 混在一起统计，会让漏斗显得比实际难看 —— 而"岗位 HC 冻结了"
+ * 和"我技术被问穿了"对复盘的指向完全相反。
+ * `failBreakdown()` 因此按组聚合，不是简单计数。
+ *
+ * ⚠️ `待定` 组只有「还不知道」一条，它是**一等选项不是兜底**：
+ * 求职里大量情况就是不知道为什么挂。强制归因的后果是乱选，
+ * 而乱选的数据比没有数据糟 —— 它让漏斗看起来有依据，实际全是随手点的。
+ * 所以宁可显式记「还不知道」，界面上还能数出"有几条待补"。
+ *
+ * ⚠️ `hint` 不是装饰。「技术被问穿」和「讲不明白」在纸面上很清楚，
+ * 实际复盘时经常分不出来（被问穿的表现往往就是讲不清）。
+ * 分不清就会随便选，两个桶互相污染，最后"该补技术还是练表达"的统计是假的。
+ * 所以每条给一个**可操作的判据**，选的时候照着对。
+ */
+export const FAIL_GROUPS = [
+  { id: "待改进", label: "可以改的", countsAsFailure: true },
+  { id: "外部", label: "外部因素", countsAsFailure: false },
+  { id: "我的选择", label: "我的选择", countsAsFailure: false },
+  { id: "待定", label: "还没想清楚", countsAsFailure: false },
 ];
+
+/* 顺序 = 界面上的顺序，按**真实频率**排，不按逻辑分类排。
+   「没有回音」大概率占一半以上，它必须在第一个 ——
+   选项越多越容易乱选，而把最常见的放最前能少点很多下。 */
+export const FAIL_REASONS = [
+  { id: "没有回音", group: "待改进", hint: "投了之后一直没动静" },
+  { id: "明确拒信", group: "待改进", hint: "收到拒信但没说原因 —— 至少说明简历被人看过" },
+  { id: "背景不符", group: "待改进", hint: "学历/年限/行业硬门槛。这是我自己的判断，未必是对方的理由" },
+  { id: "技术被问穿", group: "待改进", hint: "对方追问细节，我确实不知道" },
+  { id: "讲不明白", group: "待改进", hint: "我知道，但没讲清楚；事后想想能答" },
+  { id: "方向不匹配", group: "待改进", hint: "双方都觉得不是一路的" },
+  { id: "薪资没谈拢", group: "待改进", hint: "" },
+  { id: "岗位没了", group: "外部", hint: "HC 冻结 / 岗位关闭 / 转内推" },
+  { id: "我主动退出", group: "我的选择", hint: "流程还在，但我不想继续了" },
+  { id: "我拒了 offer", group: "我的选择", hint: "" },
+  { id: "还不知道", group: "待定", hint: "先标上，想明白再回来补" },
+];
+
+/** 兼容用：只要 id 的扁平数组。工作台的下拉列表和 check-shared 都用它。 */
+export const FAIL_BUCKETS = FAIL_REASONS.map((r) => r.id);
+
+/** 这条归因算不算「我的失败」。外部因素和我主动的选择都不算。 */
+export function countsAsFailure(reason) {
+  const r = FAIL_REASONS.find((x) => x.id === reason);
+  if (!r) return true; // 自由填写的归因保守算进失败
+  const g = FAIL_GROUPS.find((x) => x.id === r.group);
+  return g ? g.countsAsFailure : true;
+}
 
 export function isTerminal(status) {
   return TERMINAL.includes(status);
@@ -177,13 +247,83 @@ export function needsFollowUp(records, silentDays = 14) {
     .sort((a, b) => b._silentFor - a._silentFor);
 }
 
-/** 挂掉原因分桶统计 */
+/** 这条记录挂在哪一档 —— 从 statusHistory 里推断，不再问人。
+ *
+ * ⚠️ **它会经常推不准，这是设计上已知的洞，不是 bug。**
+ *
+ * 前提是你逐档标记过。而真实情况常常是：投完 → 过两周面了一次 → 挂了。
+ * 中间没点过「进面」的话，历史里只有 `已投 → 已挂`，
+ * 这个函数就会说"挂在已投"，而实际你面到了一面。
+ * **归因会因此系统性偏向早期阶段。**
+ *
+ * 所以调用方（popup 的「挂了」流程）必须把推断结果**显示出来并允许一键改**——
+ * 不是重新问一遍，是让人在它猜错时能纠正。
+ *
+ * @returns {string} 阶段 id（"" / 想投 / 已投 / 进面 / 复面 / offer），
+ *                   没有任何历史时返回 ""
+ */
+export function endedAtStage(rec) {
+  const hist = (rec && rec.statusHistory) || [];
+  // 倒着找第一个非终止态 —— 那就是它挂之前停在哪
+  for (let i = hist.length - 1; i >= 0; i--) {
+    const s = hist[i].status || "";
+    if (!isTerminal(s)) return s;
+  }
+  // 没有历史：拿当前状态兜底（它本身不是终止态的话）
+  const cur = (rec && rec.status) || "";
+  return isTerminal(cur) ? "" : cur;
+}
+
+/** 挂掉归因的统计。**按组聚合，不是简单计数。**
+ *
+ * ⚠️ 为什么不能一视同仁：「岗位 HC 冻结了」和「我技术被问穿了」
+ * 对复盘的指向完全相反，混在一张表里会让漏斗显得比实际难看。
+ * 所以 `外部` / `我的选择` / `待定` 三组**不计入失败率**。
+ *
+ * @returns {{
+ *   rows: [string, number][],          // 逐条计数，降序（兼容旧调用方）
+ *   groups: {id,label,count,countsAsFailure}[],
+ *   failures: number,                  // 只算「可以改的」那一组
+ *   notMyFault: number,                // 外部 + 我的选择
+ *   unknown: number,                    // 待定（界面该提醒你回来补）
+ *   total: number
+ * }}
+ */
 export function failBreakdown(records) {
   const m = {};
-  records.forEach((r) => {
+  let total = 0;
+  (records || []).forEach((r) => {
     if (!isTerminal(r.status)) return;
-    const k = r.failReason || "未归因";
+    total += 1;
+    /* ⚠️ 没写归因的一律算成「还不知道」，不另立一个「未归因」桶。
+       两者在复盘上是同一件事，而多一个桶会让人以为它们有区别。 */
+    const k = r.failReason || "还不知道";
     m[k] = (m[k] || 0) + 1;
   });
-  return Object.entries(m).sort((a, b) => b[1] - a[1]);
+
+  const rows = Object.entries(m).sort((a, b) => b[1] - a[1]);
+
+  const groups = FAIL_GROUPS.map((g) => ({
+    id: g.id,
+    label: g.label,
+    countsAsFailure: g.countsAsFailure,
+    count: rows.reduce((n, [reason, c]) => {
+      const def = FAIL_REASONS.find((x) => x.id === reason);
+      /* 自由填写的归因（不在表里）保守归进「可以改的」——
+         宁可高估自己的问题，也不要把它算成外部因素而看不见。 */
+      const gid = def ? def.group : "待改进";
+      return gid === g.id ? n + c : n;
+    }, 0),
+  }));
+
+  const sum = (pred) => groups.filter(pred).reduce((n, g) => n + g.count, 0);
+
+  return {
+    rows,
+    groups,
+    total,
+    failures: sum((g) => g.countsAsFailure),
+    notMyFault: sum((g) => !g.countsAsFailure && g.id !== "待定"),
+    unknown: sum((g) => g.id === "待定"),
+  };
 }

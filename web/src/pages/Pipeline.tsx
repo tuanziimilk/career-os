@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { CapabilityRow, DataSource, Intent, JobRecord, Status } from "../lib/types";
-import { computeFunnel, failBreakdown, needsFollowUp } from "../lib/funnel";
+import { computeFunnel, countsAsFailure, failBreakdown, needsFollowUp } from "../lib/funnel";
 import { FunnelChart } from "../components/FunnelChart";
 import { CapabilityBars } from "../components/CapabilityBars";
 import { JobEditModal } from "../components/JobEditModal";
@@ -360,14 +360,57 @@ export function Pipeline({ source }: { source: DataSource }) {
           )}
 
           {/* ── 挂掉归因 ───────────────────────────────── */}
-          {fails.length > 0 && (
+          {fails.total > 0 && (
             <section>
               <div className="section-head">
                 Post-mortem
                 <span className="n">挂掉归因</span>
               </div>
+
+              {/* ⚠️ 先给分组小结再给明细。理由：「岗位 HC 冻结了」和
+                  「我技术被问穿了」对复盘的指向完全相反，混在一张表里
+                  会让这一页显得比实际难看 —— 而看了让人沮丧但不改变行动的数字，
+                  正是这个项目在首页刻意不做的那种。 */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 16,
+                  flexWrap: "wrap",
+                  paddingBottom: 10,
+                  marginBottom: 8,
+                  borderBottom: "1px solid var(--rule)",
+                }}
+              >
+                {fails.groups
+                  .filter((g) => g.count > 0)
+                  .map((g) => (
+                    <div key={g.id}>
+                      <span
+                        style={{
+                          fontFamily: "var(--serif)",
+                          fontSize: 22,
+                          fontWeight: 700,
+                          color: g.countsAsFailure ? "var(--ink)" : "var(--ink-3)",
+                        }}
+                      >
+                        {g.count}
+                      </span>
+                      <span className="label" style={{ marginLeft: 6 }}>
+                        {g.label}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+
+              {fails.unknown > 0 && (
+                <p className="annot" style={{ margin: "0 0 8px" }}>
+                  有 {fails.unknown} 条还没想清楚为什么挂 —— 想明白了回扩展里补一下，
+                  不然这几条在复盘时等于没有。
+                </p>
+              )}
+
               <div style={{ display: "grid", gap: 0 }}>
-                {fails.map(([reason, count]) => (
+                {fails.rows.map(([reason, count]) => (
                   <div
                     key={reason}
                     style={{
@@ -377,6 +420,7 @@ export function Pipeline({ source }: { source: DataSource }) {
                       padding: "6px 0",
                       borderBottom: "1px solid var(--rule)",
                       fontSize: 13,
+                      color: countsAsFailure(reason) ? "var(--ink)" : "var(--ink-3)",
                     }}
                   >
                     <span>{reason}</span>

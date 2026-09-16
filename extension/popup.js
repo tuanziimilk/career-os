@@ -4,7 +4,14 @@
  */
 "use strict";
 
-import { STATUS_CYCLE, FAIL_BUCKETS, pushStatus, isTerminal } from "./lib/pipeline.js";
+import {
+  MAIN_CYCLE,
+  FAIL_GROUPS,
+  FAIL_REASONS,
+  pushStatus,
+  isTerminal,
+  endedAtStage,
+} from "./lib/pipeline.js";
 import { parseSalary, formatSalary } from "./lib/salary.js";
 import {
   addTombstone,
@@ -117,14 +124,98 @@ async function setField(key, field, value) {
   render();
 }
 
-/** 终止态要问一下挂在哪——不分桶就不知道该改什么 */
-async function askFailReason(key) {
-  const list = FAIL_BUCKETS.map((b, i) => (i + 1) + ". " + b).join("\n");
-  const v = prompt("挂在哪一环？填序号或直接写（可留空跳过）：\n\n" + list, "");
-  if (v == null) return;
-  const n = parseInt(v.trim(), 10);
-  const reason = n >= 1 && n <= FAIL_BUCKETS.length ? FAIL_BUCKETS[n - 1] : v.trim();
-  if (reason) await setField(key, "failReason", reason);
+/** querySelector 里要用的转义。key 带冒号（`boss:12345678`），不转义选择器直接报错。 */
+function cssEscape(s) {
+  return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(s) : String(s).replace(/:/g, "\\:");
+}
+
+/* 归因选择器。取代原来那个 `prompt("挂在哪一环？填序号…")`。
+ *
+ * ⚠️ 为什么不能继续用 prompt：
+ *   1. 原生弹窗样式完全不受控，在扩展里长得像个报错
+ *   2. **要人肉输序号**。十一个选项靠数数字选，选错了没有任何反馈
+ *   3. 放不下判据。而「技术被问穿」和「讲不明白」不给判据就会被随便选，
+ *      两个桶互相污染，最后"该补技术还是练表达"的统计就是假的
+ *   4. 它挡住整个界面，看不到自己正在给哪一条归因
+ *
+ * 改成在列表里**原地展开**一层，和薪资补录那个 chip 同一个套路。
+ */
+function openFailPicker(key) {
+  const rec = CACHE.find((x) => x.key === key);
+  if (!rec) return;
+
+  // 已经开着就收起来（再点一次 = 取消）
+  const existing = document.querySelector(".failpick");
+  const sameOne = existing && existing.dataset.key === key;
+  if (existing) existing.remove();
+  if (sameOne) return;
+
+  const row = document.querySelector('[data-row="' + cssEscape(key) + '"]');
+  if (!row) return;
+
+  const box = document.createElement("div");
+  box.className = "failpick";
+  box.dataset.key = key;
+
+  /* 阶段：推断出来**并且允许改**。
+     endedAtStage 会经常推不准——没逐档标记过的话，
+     「投完 → 过两周面了一次 → 挂了」会被推成"挂在已投"。
+     所以显示出来让人一眼看见它猜得对不对，而不是默默记下去。 */
+  const guessed = rec.status && !isTerminal(rec.status) ? rec.status : endedAtStage(rec);
+  const stageRow = document.createElement("div");
+  stageRow.className = "fp-stage";
+  const stageLabel = document.createElement("span");
+  stageLabel.textContent = "挂在";
+  const stageSel = document.createElement("select");
+  for (const st of MAIN_CYCLE) {
+    const o = document.createElement("option");
+    o.value = st;
+    o.textContent = st || "还没投";
+    if (st === guessed) o.selected = true;
+    stageSel.appendChild(o);
+  }
+  const stageTail = document.createElement("span");
+  stageTail.textContent = "这一环——猜错了就改它";
+  stageRow.append(stageLabel, stageSel, stageTail);
+  box.appendChild(stageRow);
+
+  // 归因：按组分隔，每条带判据
+  let lastGroup = null;
+  for (const fr of FAIL_REASONS) {
+    if (fr.group !== lastGroup) {
+      lastGroup = fr.group;
+      const g = FAIL_GROUPS.find((x) => x.id === fr.group);
+      const h = document.createElement("div");
+      h.className = "fp-group";
+      h.textContent = (g ? g.label : fr.group) + (g && !g.countsAsFailure ? "（不计入失败率）" : "");
+      box.appendChild(h);
+    }
+    const b = document.createElement("button");
+    b.className = "fp-item" + (rec.failReason === fr.id ? " cur" : "");
+    const t = document.createElement("b");
+    t.textContent = fr.id;
+    b.appendChild(t);
+    if (fr.hint) {
+      const s = document.createElement("span");
+      s.textContent = fr.hint;
+      b.appendChild(s);
+    }
+    b.onclick = async () => {
+      box.remove();
+      /* ⚠️ 顺序：先补阶段，再落终止态。
+         反过来的话终止态会盖在最后，endedAtStage 就再也看不到那一档了。 */
+      const stage = stageSel.value;
+      if (!isTerminal(rec.status)) {
+        if (stage && stage !== rec.status) await setField(key, "status", stage);
+        await setField(key, "status", "已挂");
+      }
+      await setField(key, "failReason", fr.id);
+    };
+    box.appendChild(b);
+  }
+
+  row.appendChild(box);
+  box.scrollIntoView({ block: "nearest" });
 }
 
 const SITE_NAME = {
@@ -202,6 +293,7 @@ function render() {
     .forEach((r) => {
       const d = document.createElement("div");
       d.className = "item";
+      d.dataset.row = r.key; // 归因选择器要挂在这一行下面
       const t = document.createElement("div");
       t.className = "t";
       t.textContent = (r.title || "（无标题）").split("\n")[0];
@@ -230,23 +322,31 @@ function render() {
       bi.textContent = r.intent ? INTENT_LABEL[r.intent] : "＋意向";
       bi.title = "点击切换：未定 → 想投 → 观察 → 不考虑";
       bi.onclick = () => setField(r.key, "intent", nextIn(INTENT_CYCLE, r.intent));
+      /* ── 状态：拆成「主线前进」和「挂了」两个控件 ────────────────
+       *
+       * ⚠️ 2026-09-16 改。原来是一个 chip 在 8 档里循环点击，
+       * 而那不是"不好用"，是**在伪造求职经历**：标成「已拒」要点 7 下，
+       * 每一下 pushStatus 都写一条带时间戳的历史，于是漏斗认为这条
+       * 「曾经到达过 已投/进面/复面/offer」。实测一条从没投过的记录
+       * 会被算进 applied=1、offer=1，而且不报错、轨迹看起来完全正常。
+       *
+       * 拆开之后：主线最多走到 offer，终止态一步到位 + 当场归因。
+       */
       const bs = document.createElement("button");
       bs.className = "chip" + (r.status ? " on" : "");
       bs.textContent = r.status || "＋状态";
-      bs.title = "点击切换：想投 → 已投 → 进面 → 复面 → offer → 已挂 → 已拒";
+      const atEnd = r.status === "offer";
+      const isEnded = isTerminal(r.status);
+      bs.title = isEnded
+        ? "已经结束了。点它可以改归因"
+        : atEnd
+          ? "已经到 offer 了，主线走完"
+          : "点一下前进一档：想投 → 已投 → 进面 → 复面 → offer";
       bs.onclick = async () => {
-        const next = nextIn(STATUS_CYCLE, r.status);
-        await setField(r.key, "status", next);
-        if (isTerminal(next) && !r.failReason) await askFailReason(r.key);
+        if (isEnded) return openFailPicker(r.key); // 终止态下点它 = 改归因
+        if (atEnd) return;
+        await setField(r.key, "status", nextIn(MAIN_CYCLE, r.status));
       };
-      if (r.failReason) {
-        const bf = document.createElement("button");
-        bf.className = "chip note"; // 挂因是标注，不是开关，同理不用 .on
-        bf.textContent = r.failReason;
-        bf.title = "挂掉原因，点击修改";
-        bf.onclick = () => askFailReason(r.key);
-        tags.appendChild(bf);
-      }
       // 薪资 chip。没抓到就是"＋薪资"，点一下原地变输入框——
       // 采集时不打断，回头在这里一次性把待补的几条填完。
       const bsal = document.createElement("button");
@@ -288,6 +388,26 @@ function render() {
       tags.appendChild(bsal);
       tags.appendChild(bi);
       tags.appendChild(bs);
+
+      /* 「挂了」独立成一个按钮。理由：终止**是从任何阶段都可能发生的事件**，
+         不是漏斗的下一档——把它塞进主线循环，就逼着人从当前档一路点过去。 */
+      if (!isEnded) {
+        const bx = document.createElement("button");
+        bx.className = "chip end";
+        bx.textContent = "挂了";
+        bx.title = "结束这一条并记下原因";
+        bx.onclick = () => openFailPicker(r.key);
+        tags.appendChild(bx);
+      }
+
+      if (r.failReason) {
+        const bf = document.createElement("button");
+        bf.className = "chip note"; // 挂因是标注，不是开关，同理不用 .on
+        bf.textContent = r.failReason;
+        bf.title = "挂掉原因，点击修改";
+        bf.onclick = () => openFailPicker(r.key);
+        tags.appendChild(bf);
+      }
 
       // 删除推到最右边、和其他 chip 隔开——它是这一行里唯一不可逆的操作，
       // 不该和「切换意向」这种随便点的按钮挨在一起。

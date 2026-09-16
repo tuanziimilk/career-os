@@ -168,6 +168,44 @@
     background: var(--card); color: var(--ink);
   }
   .salinput:focus { outline: none; box-shadow: 0 0 0 3px var(--acc-soft); }
+
+  /* 「挂了」。和删除同属"这一步之后不太好回头"，但它是**记录**不是销毁，
+     所以只用虚线边示意"这是个岔路口"，不借用删除的红。 */
+  .chip.end { border-style: dashed; color: var(--muted); }
+  .chip.end:hover { color: var(--ink); border-color: var(--rule-strong); border-style: solid; }
+
+  /* ── 归因选择器。原地展开，替掉 prompt() ─────────────────────
+     ⚠️ 十一个选项要塞进 popup 的窄宽度里还得可读，所以：
+       · 判据（hint）和选项名同一行、次级字色——分两行的话整块高度翻倍，
+         滚动起来就看不到自己在给哪条归因了
+       · 组标题不用填色，只靠字号和留白分隔（这套配色里填色是稀缺资源） */
+  .failpick {
+    margin: 8px 0 2px; padding: 8px; border: 1px solid var(--rule-strong);
+    border-radius: var(--r-sm); background: var(--sunk);
+  }
+  .fp-stage {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    font: 12px/1.5 var(--sans); color: var(--ink2); margin-bottom: 8px;
+  }
+  .fp-stage select {
+    font: 500 12px/1 var(--sans); padding: 3px 4px;
+    border: 1px solid var(--rule-strong); border-radius: var(--r-sm);
+    background: var(--card); color: var(--ink);
+  }
+  .fp-group {
+    font: 600 11px/1 var(--sans); color: var(--muted);
+    margin: 10px 0 4px; letter-spacing: .04em;
+  }
+  .fp-group:first-of-type { margin-top: 0; }
+  .fp-item {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    padding: 5px 6px; margin: 0; border: 1px solid transparent;
+    border-radius: var(--r-sm); background: transparent;
+  }
+  .fp-item b { font: 600 12px/1.4 var(--sans); color: var(--ink); }
+  .fp-item span { font: 11.5px/1.4 var(--sans); color: var(--muted); margin-left: 6px; }
+  .fp-item:hover { background: var(--card); border-color: var(--rule); }
+  .fp-item.cur { background: var(--acc-soft); border-color: var(--rule-strong); }
   /* 空状态承担首次使用的引导。⚠️ 上一轮把顶部那两行操作说明搬去设置页，
      却没同步加强这里——结果新用户打开弹窗只看到「还没有存任何 JD」，
      完全不知道该干什么。搬走常驻文案的前提是空状态得接住它。 */

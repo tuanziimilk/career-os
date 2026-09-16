@@ -409,10 +409,11 @@ function render() {
       // 之前两者共用 .on（黑底白字），结果薪资看起来像个开着的开关，
       // 而黑底在这套配色里是留给唯一主动作的——一行两三块黑，列表成了黑斑阵。
       bsal.className = "chip sal" + (hasSal ? "" : " pend");
+      /* ⚠️ formatSalary 的结果要兜底回原文。salaryParsed 残缺时它返回空串，
+         而空串会渲染成一个**看不见但能点**的按钮——比显示错的还糟。
+         原文永远在，退回去显示它至少是真的。 */
       bsal.textContent = hasSal
-        ? r.salaryParsed
-          ? formatSalary(r.salaryParsed)
-          : firstLine(r.salary)
+        ? (r.salaryParsed && formatSalary(r.salaryParsed)) || firstLine(r.salary) || "＋薪资"
         : "＋薪资";
       bsal.title = hasSal
         ? "薪资来源：" + (r.salarySource || "未记录") + "　点击修改"
@@ -443,22 +444,32 @@ function render() {
       tags.appendChild(si);
       tags.appendChild(ss);
 
-      /* 归因：第三栏下拉，只在状态是终止态时出现。
-         ⚠️ 它不常驻。没挂的记录上摆一个「为什么挂的」是在问一个不存在的问题。 */
-      if (isTerminal(r.status)) {
-        tags.appendChild(buildReasonSelect(r));
-      }
+      // 删除推到最右边、和其他控件隔开——它是这一行里唯一不可逆的操作，
+      // 不该和「改意向」这种随便点的东西挨在一起。
 
-      // 删除推到最右边、和其他 chip 隔开——它是这一行里唯一不可逆的操作，
-      // 不该和「切换意向」这种随便点的按钮挨在一起。
       const bd = document.createElement("button");
       bd.className = "chip del";
       bd.textContent = "删除";
       bd.title = "删掉这条（会确认；配了云端同步的话下次同步一并删云端）";
       bd.onclick = () => deleteJob(r.key);
       tags.appendChild(bd);
-
       d.appendChild(tags);
+
+      /* 归因：只在状态是终止态时出现，而且**自己占一行**。
+       *
+       * ⚠️ 两条各有各的理由，别合并回上面那行：
+       *   · 不常驻 —— 没挂的记录上摆一个「为什么挂的」是在问一个不存在的问题
+       *   · 独占一行 —— 它和上面四个挤在一起时，「删除」会被挤到第二行去，
+       *     而删除是这一行里唯一不可逆的操作，位置飘忽比难看更糟：
+       *     你会在它昨天还在的地方点到别的东西。
+       *     所以第一行锁死不换行（.tags 是 nowrap），归因另起一行。
+       */
+      if (isTerminal(r.status)) {
+        const tags2 = document.createElement("div");
+        tags2.className = "tags tags2";
+        tags2.appendChild(buildReasonSelect(r));
+        d.appendChild(tags2);
+      }
 
       list.appendChild(d);
     });

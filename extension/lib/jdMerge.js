@@ -33,7 +33,7 @@
 /** 站点前缀。现在只有 BOSS，但 ROADMAP P6 要加猎聘/智联，
     两个站的 id 空间没有理由不撞。库里只有 2 条时加前缀几乎不要钱，
     采完 100 条再加就要写数据迁移。 */
-export const SITE_PREFIX = {
+const SITE_PREFIX = {
   "zhipin.com": "boss",
   "liepin.com": "liepin",
   "zhaopin.com": "zhaopin",

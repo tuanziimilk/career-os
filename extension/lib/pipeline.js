@@ -50,11 +50,6 @@ export const FAIL_BUCKETS = [
   "岗位关闭",
 ];
 
-export function stageIndex(status) {
-  const i = STAGES.findIndex((s) => s.id === status);
-  return i < 0 ? -1 : i;
-}
-
 export function isTerminal(status) {
   return TERMINAL.includes(status);
 }

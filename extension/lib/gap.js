@@ -106,7 +106,7 @@ function hits(sentence, pattern) {
  * 通用能力却一个 AI 核心项都没有——数量判不出方向，成分才行。
  */
 const CORE = new Set((SKILLS.domain && SKILLS.domain.coreSkills) || []);
-export const DOMAIN_LABEL = (SKILLS.domain && SKILLS.domain.label) || "本方向";
+const DOMAIN_LABEL = (SKILLS.domain && SKILLS.domain.label) || "本方向";
 
 /** 这段文本在不在本工具的方向上（命中过任一核心项） */
 function inDomain(hitMap) {

@@ -54,7 +54,7 @@ export const hasPua = (s) => {
 };
 
 /** 收集一批文本里出现过的私有区码位（去重、升序）。 */
-export function collectPua(texts) {
+function collectPua(texts) {
   const set = new Set();
   for (const t of texts) {
     for (const ch of String(t || "")) {

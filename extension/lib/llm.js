@@ -72,7 +72,7 @@ export function priceOf(s, model) {
  *   - 缓存命中的输入 token 便宜得多
  *   - 思考（reasoning）token 计入输出计费，但用户看不见内容
  */
-export function splitUsage(usage) {
+function splitUsage(usage) {
   if (!usage) return null;
   const prompt = usage.prompt_tokens || 0;
   // DeepSeek 风格
@@ -106,7 +106,7 @@ export function estimateCost(usage, s, model) {
 }
 
 /** 累计用量，存本地。这是「效率成本」这层指标的数据来源 */
-export async function bumpUsage(usage, cost) {
+async function bumpUsage(usage, cost) {
   const u = splitUsage(usage);
   if (!u) return;
   const { usageTotal = {} } = await chrome.storage.local.get({ usageTotal: {} });

@@ -370,12 +370,6 @@ export function analyzeMatch(job: JobRecord, caps: CapabilityRow[]): MatchResult
   };
 }
 
-/** 给列表用的轻量版：只算覆盖率，不返回明细。分析不了就返回 null。 */
-export function quickCoverage(job: JobRecord, caps: CapabilityRow[]): number | null {
-  const r = analyzeMatch(job, caps);
-  return r.ok ? r.coverage : null;
-}
-
 /** 覆盖率 → 一句人话。刻意不给"优秀/良好"这种评价词——
  *  它暗示了一个我无法验证的判断。只说事实：JD 要求的能力我覆盖了多少。 */
 export function coverageLabel(c: number | null): string {

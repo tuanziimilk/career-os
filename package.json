@@ -5,10 +5,11 @@
   "description": "顶层入口。只放转发脚本，不装任何依赖 —— 见 README「怎么验证整个项目」。",
   "scripts": {
     "verify": "npm run verify:ext && npm run verify:web",
-    "verify:ext": "node scripts/eval-all.mjs",
+    "verify:ext": "node scripts/eval-all.mjs && npm run check:orphans",
     "verify:web": "npm --prefix web run build",
     "content:import": "npm --prefix web run content:import",
     "content:dump": "node web/scripts/dump-content-review.mjs",
-    "content:review": "npm --prefix web run content:review"
+    "content:review": "npm --prefix web run content:review",
+    "check:orphans": "node scripts/check-orphans.mjs"
   }
 }

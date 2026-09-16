@@ -16,9 +16,6 @@
  */
 import type { CapabilityLevel } from "./types";
 
-/** 等级的 emoji。顺序 = 界面上的顺序（强 → 弱 → 未评） */
-export const LEVEL_MARKS: CapabilityLevel[] = ["🟢", "🟡", "🔴"];
-
 /**
  * 等级 + 正文 → 存进 jsonb 的 note。
  *

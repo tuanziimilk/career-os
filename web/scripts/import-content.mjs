@@ -45,20 +45,38 @@ const OUT_DIR = path.resolve(__dirname, "../src/data");
 import { requireRedactList, redactRules } from "./redact.mjs";
 
 // ---------------------------------------------------------------- 脱敏词典
-/* 词表本身在 redact.local.mjs，**不进版本库**。
+/* ⚠️ 词表的校验**不能**放在模块顶层 —— 2026-09-16 在 CI 模拟环境里抓到的：
  *
- * 2026-09-15 从这里搬走的。原因：这个文件在公开仓库里，而原来的写法
- * 是一张「真实词 → 替换词」的对照表 —— 右边本来就公开，左边写出来，
- * 任何人都能反查回去，脱敏等于白做。而正则必须有明文才能匹配，
- * 改写编码都会让它失效，唯一的解法是让明文不进仓库。
+ * `check-diagrams.mjs` 和 `eval-question-ids.mjs` 只是 import 这个文件的
+ * **纯函数**（`extractDiagrams` / `parseQuestions` / `questionId`），
+ * 但顶层的 fatal 检查会在 import 那一刻就 `process.exit(1)`。
+ * 后果是：**任何克隆这个仓库的人都跑不了 `npm run gates`** ——
+ * 而 redact.local.mjs 按设计就不进版本库，也就是说所有人都跑不了。
+ *
+ * 和这个项目踩过的其他几次是同一类：**模块级副作用波及只想用纯函数的调用方。**
+ * 修法也和 `main()` 一样 —— 收进 isDirectRun 守卫里：
+ * 「没有词表就不能跑」只对**真的要写产物**那条路径成立。
+ *
+ * 词表本身在 redact.local.mjs，**不进版本库**。2026-09-15 从这里搬走的，
+ * 原因：这个文件在公开仓库里，而原来的写法是一张「真实词 → 替换词」的对照表 ——
+ * 右边本来就公开，左边写出来，任何人都能反查回去，脱敏等于白做。
+ * 而正则必须有明文才能匹配，改写编码都会让它失效，唯一的解法是让明文不进仓库。
  *
  * 判据、结构、以及缺文件时为什么不能静默跳过，见 redact.example.mjs。
  *
- * ⚠️ 这里只是兜底替换，不是唯一防线 —— 产出后仍须人工 review 一遍。
- *   词表只拦「我想到的词」，而 SC/CP 那一类内部代号当初就是人读出来的，
- *   不是词表抓到的。 */
-requireRedactList("导入内容", { fatal: true });
-const REDACT = redactRules();
+ * ⚠️ 词表只是兜底替换，不是唯一防线 —— 产出后仍须人工 review 一遍。
+ *   它只拦「我想到的词」，而那几个内部代号当初是人读出来的，不是词表抓到的。 */
+/* ⚠️ `let` 不是 `const`：词表在模块加载时可能是空的（纯函数路径），
+   由 main() 在真正要写产物之前重新取一次。写成 const 的话，
+   main() 里校验通过了、实际替换用的却还是加载时那份空表 ——
+   那是一个**看起来做了脱敏、实际没做**的状态，比直接报错糟得多。 */
+let REDACT = redactRules();
+
+/** 真要写产物之前调用：没有词表就退出，有就把规则装进 REDACT。 */
+function redactOrDie() {
+  requireRedactList("导入内容", { fatal: true });
+  REDACT = redactRules();
+}
 
 /* ⚠️ 改过三版才定下现在这个形状，前两版怎么失败的值得记下来，别再走一遍：
  *
@@ -451,6 +469,8 @@ const MODULE_FILES = {
 };
 
 function main() {
+  // 词表必须在这里校验并装载，不能在模块顶层 —— 理由见 REDACT 上面那段
+  redactOrDie();
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   /* 知识库整个不在的话，后面每个模块都会打一行「找不到…跳过」，

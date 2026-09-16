@@ -1,0 +1,112 @@
+# 推送和 PR 时跑全部机器闸门。
+#
+# ══════════ 为什么需要它 ══════════
+#
+# 这个项目建了十几道闸门，而在这个文件之前，**它们的触发条件是「作者记得跑」**。
+# 这和项目自己反复写下的原则冲突：「不在 build 里跑的检查迟早不跑」——
+# 闸门确实在 build 里，但没有任何东西自动跑 build。
+#
+# 现成的证据：2026-09-15 合并仓库那天，check-diagrams 的知识库路径断了，
+# 它走「跳过」分支照常打印「全部断言通过」，一直没人发现，
+# 直到四天后有人手动跑才看见。
+#
+# ══════════ 为什么分成两个 job ══════════
+#
+# `content-signoff`（人工签章）和其余闸门性质完全不同：
+#   · 其余闸门问的是「代码对不对」—— 机器能答，该绿
+#   · 签章问的是「有没有人读过要公开的内容」—— **机器答不了**，
+#     而且在没签之前它就该是红的，因为那是事实
+#
+# 混在一个 job 里的话，一条「等人签章」会把「代码全绿」也染红，
+# 而一个长期红着的 CI 会被学会无视 —— 那正是这个项目最忌讳的东西
+# （「一个从不报错的检查等于没有检查」的反面：一个总在报错的检查同样等于没有）。
+#
+# 分开之后，红的那一格自己说清楚了原因，而且一条命令就能转绿：
+#   cd web && npm run content:review
+#
+# ══════════ CI 上有哪些断言跑不了 ══════════
+#
+# 知识库（career-knowledgebase）和脱敏词表（redact.local.mjs）都不在版本库里，
+# 所以 runner 上没有它们。相关脚本**会明说自己跳过了**，不会假绿：
+#   · check-diagrams  跳过「和知识库原文逐字比对」，只留结构性断言
+#   · eval-leaks      跳过身份类断言，通用断言照跑
+# 看 CI 日志时注意这几行 —— **绿色不等于全部验过**。
+
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extension:
+    name: 扩展侧（8 个脚本，零构建）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # 扩展是零构建的，没有依赖要装 —— 这本身就是它的设计目标之一
+      - name: eval-all
+        run: node scripts/eval-all.mjs
+      - name: 零调用导出对账
+        run: node scripts/check-orphans.mjs
+
+  web:
+    name: 工作台（闸门 + 类型 + 构建）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: 安装依赖
+        run: npm ci
+        working-directory: web
+      # 分步跑而不是一条 npm run build：失败时 CI 直接指出是哪一道闸门，
+      # 不用翻日志找。顺序和 build 保持一致。
+      - name: 机器闸门（shared / thresholds / eol / diagrams / eval）
+        run: npm run gates
+        working-directory: web
+      - name: 类型检查
+        run: npx tsc -b
+        working-directory: web
+      - name: 构建
+        run: npx vite build
+        working-directory: web
+
+  content-signoff:
+    name: 内容人工签章（红=等你签，不是代码坏了）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: 安装依赖
+        run: npm ci
+        working-directory: web
+      - name: 检查签章
+        run: npm run check:content
+        working-directory: web
+      - name: 说明
+        if: failure()
+        run: |
+          echo "这一格红，意思是**要公开的内容还没有人逐条读过**，不是代码有问题。"
+          echo "机器能查的部分（词表扫描）在上面的 gates 里已经跑过了；"
+          echo "这一道挡的是词表天生抓不到的那类 —— 只能人读。"
+          echo ""
+          echo "转绿的办法（必须在你自己的终端里，脚本会拒绝非交互式环境签）："
+          echo "  node web/scripts/dump-content-review.mjs   # 生成可读版"
+          echo "  cd web && npm run content:review           # 看完签章"
+          echo "  git add web/src/data/content-review.json && git commit && git push"

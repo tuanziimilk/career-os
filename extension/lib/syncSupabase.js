@@ -52,7 +52,7 @@ export function isLoggedIn(s) {
 
 /** 请求访问 Supabase 域名的权限——optional_host_permissions 声明了但不会自动生效，
  *  必须在用户手势里显式 request 一次，Chrome 才会真的放行跨域请求。 */
-export async function ensureHostPermission(url) {
+async function ensureHostPermission(url) {
   const origin = new URL(url).origin + "/*";
   const has = await chrome.permissions.contains({ origins: [origin] });
   if (has) return true;

@@ -33,7 +33,7 @@ const STOP = new Set([
 ]);
 
 /** 极简中英分词：英文按词，中文按 2-gram（不引依赖，够用） */
-export function tokenize(text) {
+function tokenize(text) {
   const s = (text || "").toLowerCase();
   const out = [];
   // 英文 / 数字 / 常见技术词

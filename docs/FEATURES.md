@@ -146,33 +146,47 @@
 
 ## 三、机器扫出来的问题（需要你判断）
 
-### 3.1 导出了但全项目找不到使用处的符号
+### 3.1 导出了但全项目找不到使用处的符号 —— **2026-09-16 已机器化，全部处理完**
 
-不一定都是问题——有些是为测试导出的，有些是真的忘了删。**逐条判断，然后要么用起来、要么删掉、要么在这里标注「故意导出给测试」。**
+> 这一节原来是一张 11 项**全打着 ❓** 的猜测表，是一次性人工 grep 的结果。
+> 现在由 `scripts/check-orphans.mjs` 每次 `npm run verify` / CI 自动对账，
+> 白名单在 `scripts/orphan-allowlist.json`。**这一节不再手工维护。**
 
-| 文件 | 符号 | 我的猜测 |
+处理结果（114 个具名导出，逐个查过）：
+
+| 处置 | 数量 | 明细 |
 |---|---|---|
-| `extension/lib/pipeline.js` | `stageIndex` | 疑似遗留，`funnel()` 内部自己算了 ❓ |
-| `extension/lib/retrieve.js` | `tokenize` | 可能是给 eval 用的 ❓ |
-| `extension/lib/llm.js` | `splitUsage` `bumpUsage` | 用量统计，界面删过一次 ❓ |
-| `extension/lib/gap.js` | `DOMAIN_LABEL` | 常量，可能是给未来 UI 的 ❓ |
-| `extension/lib/glyphmap.js` | `collectPua` | 调试用？❓ |
-| `extension/lib/jdMerge.js` | `SITE_PREFIX` | 09-14 新增，可能就是给测试的 ❓ |
-| `extension/lib/syncSupabase.js` | `ensureHostPermission` | **值得看一眼**，权限相关的东西没被调用比较可疑 |
-| `web/src/lib/match.ts` | `quickCoverage` | ❓ |
-| `web/src/lib/capabilityNote.ts` | `LEVEL_MARKS` | ❓ |
-| `web/scripts/review-content.mjs` | `digestProducts` `diffAgainstMark` | 脚本内部函数导出，无害 |
+| **取消 export** | 7 | `DOMAIN_LABEL` · `collectPua` · `SITE_PREFIX` · `splitUsage` · `bumpUsage` · `tokenize` · `ensureHostPermission` —— 它们**在自己文件里是有用的**，只是没必要导出 |
+| **删掉** | 3 | `stageIndex`（`funnel()` 内部自己算索引）· `LEVEL_MARKS`（校准台有自己更完整的 `LEVELS`）· `quickCoverage`（Match 页直接调 `analyzeMatch`，拿到的信息比它多） |
+| **白名单** | 0 | 目前一条都不需要 |
 
-> `.d.ts` 文件（`salary.d.ts` / `mammoth-browser.d.ts`）显示零引用是**扫描器的假阳性**，
-> 类型声明是隐式加载的，不用管。
+两处值得记下来的更正：
+
+- **`ensureHostPermission` 不是问题。** 原表写着「权限相关的东西没被调用比较可疑」——
+  它**是被调用的**，就在同文件的 `login()` 里。跨文件 grep 看不见同文件调用，
+  于是把「只在内部用」误判成了「没人用」。
+- **`quickCoverage` 删得有额外收益。** 它 `return r.ok ? r.coverage : null`，
+  把「这条分析不了」和「算得出但覆盖率为空」压成同一个 `null`；
+  而 Match 页的列表同时需要这两个信息，所以它本来就没法用这个函数。
+
+> `.d.ts` 文件显示零引用是扫描器的假阳性，类型声明是隐式加载的 ——
+> `check-orphans.mjs` 已经把 `.d.ts` 排除在外。
 
 ### 3.2 三个「实现完整、零调用者」（💤）
 
 这是这个项目最该机器化防住的一类：
 
-1. `pipeline.js` 的 `needsFollowUp()` —— 对话侧没有 `PIPELINE` 意图（标杆集 A12）
+1. `pipeline.js` 的 `needsFollowUp()` —— **措辞要精确**：它不是零调用者
+   （漏斗标签页和首页都在用，11 处引用）。缺的是**对话侧没有 `PIPELINE` 意图**，
+   所以你没法问「我有哪些岗位该跟进了」（标杆集 A12）。
+   ⚠️ 原文写成「零调用者」会让人以为整个函数没人用 —— 而那正是 FEATURES 自己
+   警告过的第二个方向：**做了但清册还记着没做**
 2. `stats()` 算出的 `cities` —— `answerStats` 没路由（标杆集 A8）
 3. 设置页手填价格 —— 字段在、界面删了（这条是**故意的**，见 `llm.js` 注释）
+
+> 这三条 `check-orphans.mjs` **抓不到**，因为它们的函数都有调用者 ——
+> 缺的是「某条用户路径通不到它」。那是意图路由的问题，不是符号可达性的问题，
+> 得靠 `eval-intents.mjs` 里那几条标着「已知洞」的用例看住。
 
 ### 3.3 一个「注释承诺了但不存在」（📝）
 

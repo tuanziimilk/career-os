@@ -44,35 +44,80 @@ if (!recs.length) {
   process.exit(2);
 }
 
+import { STATUS_CYCLE, isTerminal } from "../extension/lib/pipeline.js";
+
+/** 这一档在漏斗里的位置。认不出的（空串、"采集"）返回 -1。 */
+function rank(status) {
+  const i = STATUS_CYCLE.indexOf(status || "");
+  return status && i > 0 ? i : -1;
+}
+
+/** 轨迹里有没有**倒退**：offer 之后又回到「想投」这种。
+ *
+ * 真实的求职流程只会往前走，或者走到终止态停住。倒退一次都不该有。
+ * 所以只要出现倒退，这条轨迹**整条都不可信** —— 不是"其中几条是假的"，
+ * 是"这根本不是一段经历，是有人在界面上来回点"。
+ */
+function hasRegression(hist) {
+  let top = -1;
+  for (const h of hist) {
+    const r = rank(h.status);
+    if (r < 0) continue;
+    if (r < top) return true;
+    top = r;
+  }
+  return false;
+}
+
 let touched = 0;
 const out = recs.map((r) => {
   const hist = r.statusHistory || [];
-  if (hist.length < 3) return r; // 少于三条不可能是连点出来的一串
+  if (hist.length < 2) return r;
 
-  /* 标记要删的：不是第一条、且和下一条的间隔 < GAP_MS。
-     用"和下一条的间隔"而不是"和上一条"——因为要留的是段尾。 */
-  const drop = hist.map((h, i) => {
-    if (i === 0 || i === hist.length - 1) return false;
-    const t = Date.parse(h.at || "");
-    const tn = Date.parse(hist[i + 1]?.at || "");
-    if (!Number.isFinite(t) || !Number.isFinite(tn)) return false; // 时间戳坏了就不动它
-    return tn - t < GAP_MS;
-  });
-  // 段尾那条如果和它前一条也是连点，说明整段都是点出来的，前面的都删
-  const kept = hist.filter((_, i) => !drop[i]);
-  if (kept.length === hist.length) return r;
+  let kept;
+  let why;
+
+  if (hasRegression(hist)) {
+    /* 规则一（优先）：轨迹倒退 → 整条重置为「首条 + 当前状态」。
+       首条留着是因为它是采集时刻，算得出"这条躺了多久"；
+       当前状态如果非空就补一条，否则这条记录就回到"没标记过"。 */
+    why = "轨迹有倒退（offer 之后又回到早期档），整条不可信";
+    kept = [hist[0]];
+    if (r.status && r.status !== hist[0].status) {
+      kept.push({ status: r.status, at: hist[hist.length - 1].at });
+    }
+  } else {
+    /* 规则二：连点。相邻两档间隔 < GAP_MS 的判为同一串点击，段内只留段尾。 */
+    const drop = hist.map((h, i) => {
+      if (i === 0 || i === hist.length - 1) return false;
+      const t = Date.parse(h.at || "");
+      const tn = Date.parse(hist[i + 1]?.at || "");
+      if (!Number.isFinite(t) || !Number.isFinite(tn)) return false;
+      return tn - t < GAP_MS;
+    });
+    kept = hist.filter((_, i) => !drop[i]);
+    why = "相邻档位间隔不到 " + GAP_MS / 1000 + " 秒，判为连点";
+    if (kept.length === hist.length) return r;
+  }
 
   touched++;
-  const label = (r.company || "?") + " / " + (r.title || "?").split("\n")[0].slice(0, 20);
-  console.log("\n" + label);
-  console.log("  原  " + hist.map((h) => h.status).join(" → "));
-  console.log("  改  " + kept.map((h) => h.status).join(" → "));
-  console.log("  删掉 " + (hist.length - kept.length) + " 条");
+  const label = (r.company || "?") + " / " + (r.title || "?").split(String.fromCharCode(10))[0].slice(0, 24);
+  console.log("");
+  console.log(label);
+  console.log("  判据  " + why);
+  console.log("  当前 status = " + JSON.stringify(r.status || ""));
+  console.log("  原  " + hist.map(fmt).join(" → "));
+  console.log("  改  " + kept.map(fmt).join(" → "));
+  console.log("  " + hist.length + " 条 → " + kept.length + " 条");
   return { ...r, statusHistory: kept };
 });
 
+function fmt(h) {
+  return h.status || "（空）";
+}
+
 console.log(
-  "\n共 " + recs.length + " 条记录，" + touched + " 条有连点痕迹。" +
+  "\n共 " + recs.length + " 条记录，" + touched + " 条的轨迹不可信。" +
     (touched ? "" : "（干净，不用修）")
 );
 
@@ -81,7 +126,8 @@ if (!touched) process.exit(0);
 if (!doWrite) {
   console.log(
     "\n只是看看，没动任何文件。\n" +
-      "上面每一条都自己核一遍——判据是时间间隔，会误伤「面完当场给 offer」这种。\n" +
+      "上面每一条都自己核一遍。两条判据都会误伤：" +
+      "「倒退」会冤枉真的从 offer 谈崩回到复面的流程，「连点」会冤枉面完当场给 offer 的。" +
       "确认没问题再加 --write。"
   );
   process.exit(0);

@@ -97,8 +97,28 @@ def placeholder_groups(profile):
 
 
 PLACEHOLDER_GROUPS = placeholder_groups(MY_PROFILE)
-# 一条都没填真的 → 自评整体不可用，「缺口排行」这一章必须拒绝输出
-PROFILE_UNUSABLE = bool(MY_PROFILE) and len(PLACEHOLDER_GROUPS) == len(MY_PROFILE)
+
+
+def usable_groups(profile):
+    """真正填了东西的能力组。空字符串不算，模板占位也不算。"""
+    return [
+        g
+        for g, v in (profile or {}).items()
+        if str(v).strip() and PLACEHOLDER_MARK not in str(v)
+    ]
+
+
+USABLE_GROUPS = usable_groups(MY_PROFILE)
+
+# 一条真的都没有 → 自评整体不可用，「缺口排行」这一章必须拒绝输出。
+#
+# ⚠️ 判据是「有没有**可用**的自评」，不是「是不是全都带示例」。
+# 2026-09-16 踩过：把模板那 4 条示例清空、补齐成 16 个空槽之后，
+# 原来的判据（全部带「示例」才算不可用）就再也不成立了 —— 一条自评都没有，
+# 这道闸门却认为"能用"，缺口排行照常输出。
+# 也就是说**清理模板这个动作本身把闸门关掉了**，而且不报错。
+# 空和占位是同一件事：都表示"这一组我还没判断过"。
+PROFILE_UNUSABLE = bool(MY_PROFILE) and not USABLE_GROUPS
 
 # 样本量下限。报告头部本来就写着「样本少于 10 条时结论不稳，别急着改简历口径」
 # —— 但那只是一句提示，下面照样输出了带 🔥🔥 优先级的排行。
@@ -292,7 +312,7 @@ def analyze():
     if USING_EXAMPLE:
         A("> ⚠️ 没找到 `analyzer/config.py`，当前用的是 `config.example.py`。")
     if PROFILE_UNUSABLE:
-        A("> ⚠️ **`MY_PROFILE` 还是模板占位**（每条都带「示例」），缺口那一章不输出。修法见该章。")
+        A("> ⚠️ **`MY_PROFILE` 里没有一条可用的自评**（全空、或全是模板占位），缺口那一章不输出。修法见该章。")
     elif PLACEHOLDER_GROUPS:
         A("> ⚠️ 这几个能力组的自评还是模板占位，已按「未填」处理："
           + "、".join(PLACEHOLDER_GROUPS))

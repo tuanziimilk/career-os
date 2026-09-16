@@ -78,12 +78,31 @@ print("\n── 空自评不算「占位」（那是另一种情况）──")
 check("空 dict 的 placeholder_groups 为空", mod.placeholder_groups({}) == [])
 check("None 不炸", mod.placeholder_groups(None) == [])
 
-print("\n── 当前仓库的真实状态 ──")
-print("  config.py 的 MY_PROFILE 共 %d 组，其中占位 %d 组"
-      % (len(mod.MY_PROFILE), len(mod.PLACEHOLDER_GROUPS)))
-check("PROFILE_UNUSABLE 正确反映当前状态",
-      mod.PROFILE_UNUSABLE == (len(mod.MY_PROFILE) > 0
-                               and len(mod.PLACEHOLDER_GROUPS) == len(mod.MY_PROFILE)),
+print("")
+print("── 空槽和占位是同一件事：都表示「这一组我还没判断过」──")
+
+# ⚠️ 这一组断言补的是一个我 2026-09-16 亲手打开的洞。
+# 当时把 config.py 里 4 条模板示例清空、补齐成 16 个空槽，
+# 而 PROFILE_UNUSABLE 原来的判据是「是不是全都带『示例』」——
+# 清空之后一条「示例」都没有了，闸门就认为"能用"，
+# 于是一条自评都没有的情况下，缺口排行会照常输出。
+# **清理模板这个动作本身把闸门关掉了，而且不报错。**
+check("全空 = 不可用（这就是那个回归）",
+      mod.usable_groups({"a": "", "b": "   "}) == []
+      and mod.usable_groups({}) == [])
+check("全是占位 = 不可用", mod.usable_groups({"a": "🟢 示例：随便写的"}) == [])
+check("空 + 占位混着 = 还是不可用",
+      mod.usable_groups({"a": "", "b": "🟡 示例：xx"}) == [])
+check("只要有一条真的填了，就算可用",
+      mod.usable_groups({"a": "", "b": "🔴 没做过多轮对话"}) == ["b"])
+check("None 不炸", mod.usable_groups(None) == [])
+
+print("")
+print("── 当前仓库的真实状态 ──")
+print("  config.py 的 MY_PROFILE 共 %d 组：占位 %d 组，真正可用 %d 组"
+      % (len(mod.MY_PROFILE), len(mod.PLACEHOLDER_GROUPS), len(mod.USABLE_GROUPS)))
+check("PROFILE_UNUSABLE = 有 MY_PROFILE 但一条可用的都没有",
+      mod.PROFILE_UNUSABLE == (len(mod.MY_PROFILE) > 0 and not mod.USABLE_GROUPS),
       "PROFILE_UNUSABLE=%s" % mod.PROFILE_UNUSABLE)
 check("样本量下限是 10（和报告头部那句提示一致）", mod.MIN_SAMPLE == 10,
       str(mod.MIN_SAMPLE))

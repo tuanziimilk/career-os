@@ -189,6 +189,59 @@ check(
   ).statusHistory.length === 1
 );
 
+/* ─────────────────────────────────────────── 2c. 轨迹倒退 */
+group("2c. 倒退判据：真实流程只往前走");
+
+/* ⚠️ 这条判据是被真实数据逼出来的。2026-09-16 从备份里捞到一条：
+     （空）→ 想投 → 已投 → 进面 → 复面 → offer → 已挂 → 已拒 → （空）
+     → 想投 → 已投 → 进面 → 复面 → offer → 已挂 → （空）→ 已拒 → （空）
+   18 条，前 7 档全在 70 秒内点完。而 record.status 当时是空的 ——
+   一条"从没标记过"的记录，历史里却两次走到 offer。
+
+   原来只有「相邻两档 <90 秒 = 连点」这一条判据，对它**不够**：
+   后面那几次点击间隔几十分钟，会被留下来，结果修完是
+   「（空）→ 已挂 → 已拒 →（空）」—— 还是假的，而且看着更像真的。
+
+   倒退是更强的信号：真实流程只会往前走，或者走到终止态停住。
+   倒退一次都不该有，所以出现倒退 = **整条轨迹不可信**，不是"其中几条假"。 */
+const RANK = (st) => { const i = STATUS_CYCLE.indexOf(st || ""); return st && i > 0 ? i : -1; };
+function hasRegression(hist) {
+  let top = -1;
+  for (const h of hist) {
+    const r = RANK(h.status);
+    if (r < 0) continue;
+    if (r < top) return true;
+    top = r;
+  }
+  return false;
+}
+const H = (...ss) => ss.map((s) => ({ status: s }));
+
+check("正常前进的轨迹不算倒退", hasRegression(H("", "想投", "已投", "进面", "已挂")) === false);
+check("走到 offer 就停也不算", hasRegression(H("想投", "已投", "offer")) === false);
+check("offer 之后回到想投 = 倒退", hasRegression(H("想投", "offer", "想投")) === true);
+check("已拒之后又出现「已投」= 倒退", hasRegression(H("已投", "已拒", "已投")) === true);
+check(
+  "空串和「采集」不参与比较，不会被当成倒退",
+  hasRegression(H("采集", "想投", "", "已投")) === false
+);
+check("空轨迹不炸", hasRegression([]) === false);
+check(
+  "真实那条（两轮循环点击）判为倒退",
+  hasRegression(
+    H("", "想投", "已投", "进面", "复面", "offer", "已挂", "已拒", "", "想投", "已投")
+  ) === true
+);
+/* ⚠️ 这一条断言的是**已知的误伤**，不是期望行为：
+   真的从 offer 谈崩回到复面，也会被判成倒退。
+   写成断言是为了钉住"脚本默认只打印不写、要人逐条核"这个前提 ——
+   哪天有人把它改成自动执行，这里应该先红。 */
+check(
+  "【已知误伤】offer 谈崩回到复面，也会被判成倒退",
+  hasRegression(H("已投", "进面", "复面", "offer", "复面")) === true
+);
+
+
 /* ─────────────────────────────────────────── 3. 归因分组 */
 group("3. 归因分组：外部因素不能算进我的失败率");
 

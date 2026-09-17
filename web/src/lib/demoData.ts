@@ -92,7 +92,7 @@ const DEMO_JOBS_RAW: JobRecord[] = [
     site: "demo",
     intent: "🔥",
     status: "已挂",
-    failReason: "一面挂-项目深挖",
+    failReason: "技术被问穿",
     statusHistory: [
       { status: "", at: d(33) },
       { status: "已投", at: d(31) },
@@ -111,7 +111,7 @@ const DEMO_JOBS_RAW: JobRecord[] = [
     site: "demo",
     intent: "🔥",
     status: "已挂",
-    failReason: "一面挂-表达散",
+    failReason: "讲不明白",
     statusHistory: [
       { status: "", at: d(29) },
       { status: "已投", at: d(27) },
@@ -178,7 +178,7 @@ const DEMO_JOBS_RAW: JobRecord[] = [
     site: "demo",
     intent: "❌",
     status: "已拒",
-    failReason: "薪资谈崩",
+    failReason: "薪资没谈拢",
     statusHistory: [
       { status: "", at: d(35) },
       { status: "已投", at: d(33) },
@@ -197,6 +197,10 @@ const DEMO_JOBS_RAW: JobRecord[] = [
     site: "demo",
     intent: "❌",
     status: "已挂",
+    // ⚠️ 这一条刻意标成「外部因素」：demo 数据要能演示到
+    // 「后三组不计入失败率」的分组，否则归因分组在作品集里看不出效果。
+    // 另外三条终止态里还有一条**刻意不写归因** —— 真实的漏斗一定有没想清楚的。
+    failReason: "岗位没了",
     // 归因故意留空——demo 也要体现"不是每条都能归因"的真实情况
     statusHistory: [
       { status: "", at: d(14) },

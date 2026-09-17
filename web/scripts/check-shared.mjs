@@ -37,6 +37,8 @@ const P = {
 
 const rel = (p) => relative(root, p).replace(/\\/g, "/");
 const problems = [];
+const LINE = String.fromCharCode(10); // 换行。刻意不写转义序列 —— 见文件末尾那段。
+
 
 /* ---------------------------------------------- 1. salary.js 内容一致 */
 /* ⚠️ 比的是**规范化行尾之后**的内容，不是原始字节。2026-09-15 合并单仓库时
@@ -203,9 +205,72 @@ function parseGenerated(text) {
   }
 }
 
+/* ------------------------------------- 4. demo 数据必须用现行的归因表 */
+/* ⚠️ demo 数据是**公开部署版的默认数据源** —— 访客（包括面试官）看到的就是它。
+ *
+ * 2026-09-17 踩到：归因表从旧的 5 个桶换成新的 11 条分组归因，
+ * 但 demo 里那三条 failReason 没跟着改，于是
+ *   · 界面上显示着产品里根本不存在的归因标签
+ *   · countsAsFailure 对认不出的归因保守归进「可以改的」，
+ *     三条全被算成"我的失败"，demo 漏斗比设计的难看
+ * 全程不报错。改常量的人不会想到去翻 demo 数据，所以得有机器盯着。
+ */
+{
+  const web = await import("../src/lib/funnel.ts");
+  /* ⚠️ 不 import demoData.ts：它对 ./types 有**值导入**（unsupportedWrite），
+     而 Node 的 TS 类型剥离不做无扩展名解析，import 会直接 ERR_MODULE_NOT_FOUND。
+     所以归因取值用正则从源码里抠，判定逻辑仍然用真的 countsAsFailure。
+
+     ⚠️ 正则抠不到东西时必须**报错而不是通过** —— 哪天 demoData 换了写法
+     （比如归因改成从别处生成），这个检查会安静地扫出 0 条然后打印全绿，
+     而那正是这个项目反复踩过的「一个从不报错的检查等于没有检查」。 */
+  const demoSrc = readFileSync(resolve(root, "src/lib/demoData.ts"), "utf8");
+  const found = [...demoSrc.matchAll(/failReason:\s*"([^"]+)"/g)].map((m) => m[1]);
+  const MIN_EXPECTED_DEMO_REASONS = 3;
+  if (found.length < MIN_EXPECTED_DEMO_REASONS) {
+    problems.push(
+      [
+        `只在 demo 数据里扫到 ${found.length} 条归因（至少该有 ${MIN_EXPECTED_DEMO_REASONS} 条）。`,
+        "    要么 demoData.ts 换了写法、这条正则失效了，要么归因被删光了。",
+        "    两种情况都得看一眼 —— 不能当作「通过」。",
+      ].join(LINE)
+    );
+  }
+  const withReason = found;
+
+  const bad = withReason.filter((r) => !web.FAIL_BUCKETS.includes(r));
+  if (bad.length) {
+    problems.push(
+      [
+        `demo 数据里有 ${bad.length} 条归因不在现行的 FAIL_REASONS 表里：`,
+        ...bad.map((r) => `    ${r}`),
+        `    现行取值：${web.FAIL_BUCKETS.join(" / ")}`,
+        "    改 src/lib/demoData.ts —— 它是公开部署版的默认数据源，访客看到的就是它。",
+      ].join(LINE)
+    );
+  } else {
+    console.log(`✓ demo 数据的 ${withReason.length} 条归因都在现行表里`);
+  }
+
+  // demo 还要能演示到「不计入失败率」这个分组，
+  // 否则漏斗看起来像「挂了的全是我的问题」，而分组正是为了区分这两类。
+  const outside = withReason.filter((r) => !web.countsAsFailure(r));
+  if (outside.length) {
+    console.log(`✓ demo 里有 ${outside.length} 条「不计入失败率」的归因，分组演示得出来`);
+  } else {
+    problems.push(
+      [
+        "demo 数据里一条「不计入失败率」的归因都没有（外部因素 / 我的选择）。",
+        "    那样 demo 漏斗看起来像「挂了的全是我的问题」，",
+        "    而分组存在的意义正是区分这两类。",
+      ].join(LINE)
+    );
+  }
+}
+
 /* ------------------------------------------------------------------ */
 if (problems.length) {
-  console.error("\n✗ 共享物校验未通过：\n");
-  problems.forEach((p) => console.error("  - " + p + "\n"));
+  console.error(LINE + "✗ 共享物校验未通过：" + LINE);
+  problems.forEach((p) => console.error("  - " + p + LINE));
   process.exit(1);
 }

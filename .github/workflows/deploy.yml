@@ -1,0 +1,140 @@
+# 把工作台发布到 GitHub Pages。
+#
+# ══════════ ⚠️ 这个 workflow 只能手动触发 ══════════
+#
+# 刻意不挂 `on: push`。理由不是谨慎，是**发布的语义和验证不一样**：
+# 推代码是"我改完了"，发布是"我认为现在这一版可以给别人看"。
+# 后者是一个判断，不该由 git push 这个动作代替。
+#
+# 而且这个项目的工作台现在大半是空页面（13 条 JD、0 条标过投递状态），
+# 自动发布等于每次推代码都把一个空壳挂出去。
+#
+# 想改成自动发布：把下面 `on:` 里的 push 那三行取消注释。
+# 但在那之前先想清楚上面那段。
+#
+# ══════════ ⚠️ 发布之后 anon key 就是公开的 ══════════
+#
+# 这不是可以规避的，是静态站点的性质：没有服务端，浏览器要连 Supabase
+# 就必须自己持有凭据，而浏览器里的东西用户全看得见。
+# 构建时注入只是不写进源码，**不是加密** —— 实测过：
+# 用假值构建后 `grep` 构建产物，key 原样躺在 dist/assets/index-*.js 里。
+#
+# 所以 Secrets 在这里的作用是"不把项目 URL 硬编进源码、换环境改一处"，
+# **不是**"把 key 藏起来"。真正的门是数据库的 RLS（7 张表全开，
+# 策略 `user_id = auth.uid()`，见 web/supabase/schema.sql）。
+#
+# 👉 第一次发布前必做：去 Supabase → Authentication → Sign In / Providers
+#    关掉「Allow new users to sign up」。
+#    RLS 保护的是**数据**，挡不住**注册** —— 任何人拿到公开的 anon key
+#    都能在你的项目里建账号，看不到你一行数据，但会吃你的免费额度、
+#    往表里堆他自己的行。你的账号已经建好了，关掉不影响你登录。
+#
+# ══════════ 为什么发布前要重跑一遍闸门 ══════════
+#
+# verify.yml 是跟着 push 跑的，而这个 workflow 是手动触发的 ——
+# 两者之间可能隔了很久，也可能你是从一个没跑过 CI 的分支手点的。
+# 发布是这个仓库唯一一个"对外可见"的动作，重跑一遍的代价是两分钟。
+
+name: deploy
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+
+# GitHub Pages 官方部署方式要求的两个权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只允许一个发布在跑；新的排队而不是取消，
+# 避免两个发布交叉写同一个站点。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 构建（闸门 + 类型 + 打包）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+        working-directory: web
+
+      # ⚠️ 没有这一步的话，缺 Secret 会**静默降级**而不是失败：
+      # supabaseClient.ts 里 `supabaseConfigured = Boolean(url && anonKey)`，
+      # 两个都为空时它就是 false，构建照样成功，
+      # 发布出去的是一个连不上数据的工作台 —— 而且看起来像"功能坏了"。
+      # 宁可在这里红。
+      - name: 检查 Secrets 配好了没
+        env:
+          URL: ${{ secrets.VITE_SUPABASE_URL }}
+          KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          missing=""
+          [ -z "$URL" ] && missing="$missing VITE_SUPABASE_URL"
+          [ -z "$KEY" ] && missing="$missing VITE_SUPABASE_ANON_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::缺少 Secret:$missing"
+            echo ""
+            echo "没有它们也能构建成功，但发布出去的工作台连不上云端数据，"
+            echo "界面上看起来像功能坏了，而不是像配置没填。所以这里直接拦住。"
+            echo ""
+            echo "去仓库 Settings → Secrets and variables → Actions → New repository secret 添加。"
+            echo "值在 Supabase Dashboard → Project Settings → Data API（anon public 那个 key）。"
+            exit 1
+          fi
+          echo "两个 Secret 都在。"
+
+      # 和 verify.yml 一样分步跑：失败时直接指出是哪一道闸门
+      - name: 机器闸门
+        run: npm run gates
+        working-directory: web
+
+      - name: 内容人工签章
+        run: npm run check:content
+        working-directory: web
+
+      - name: 类型检查
+        run: npx tsc -b
+        working-directory: web
+
+      # GITHUB_PAGES=1 让 vite.config.ts 把 base 切成 "/career-os/"。
+      # ⚠️ 少了它，构建出的资源路径是 "/assets/..."，
+      # 而 Pages 把站点挂在 /career-os/ 子路径下 —— 页面会白屏且只在线上复现，
+      # 本地 dev 和 preview 都是好的（它们走 base="/"）。
+      - name: 构建
+        env:
+          GITHUB_PAGES: "1"
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npx vite build
+        working-directory: web
+
+      # 路由是 HashRouter（见 web/src/main.tsx），所以不需要 404.html 那套
+      # 兜底 —— 所有路由都在 # 后面，服务端只会被请求 index.html 一个地址。
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    name: 发布
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

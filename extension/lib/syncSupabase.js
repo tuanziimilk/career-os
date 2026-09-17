@@ -20,6 +20,8 @@
  *   插件这边不需要它。RLS 按 auth.uid() 判断，跟用哪种方式登录无关。
  */
 
+import { pendingJobs, markSynced } from "./syncState.js";
+
 const DEFAULTS = {
   supabaseUrl: "",
   supabaseAnonKey: "",
@@ -112,7 +114,13 @@ async function refreshIfNeeded(s) {
   });
 }
 
-async function authedFetch(s, url, opts) {
+/* ⚠️ opts 必须有默认值。2026-09-17 之前它没有，而第 122 行直接读 opts.headers，
+   于是**只传两个参数的调用会 TypeError**。全仓库只有一处这么调：pullResume。
+   后果是云端简历拉取从来没成功过 —— 它在 try/catch 里，只 console.warn 一条，
+   返回 { pulled: false }，界面上什么都不显示。三件事叠在一起，
+   一个功能死了很久没人发现。
+   给默认值之后，这一类错误从语法上就不可能再出现，不需要额外的闸门看着。 */
+async function authedFetch(s, url, opts = {}) {
   const headers = {
     apikey: s.supabaseAnonKey,
     Authorization: "Bearer " + s.accessToken,
@@ -289,8 +297,37 @@ export async function syncAll(jobs, onProgress) {
     jobs = fresh.jds;
   }
 
+  /* ⚠️ 只推需要推的，不再全量。
+   *
+   * 原来这里遍历的是全部记录，不管改没改。13 条时无所谓，100 条就是
+   * 100 个 POST 加上有轨迹的各一次 DELETE + POST —— 几十秒串行请求，
+   * 而 popup 一失焦就关，脚本上下文跟着死，同步断在半路。
+   *
+   * 换成按每条自己的 syncedAt 过滤之后：第一次还是全推（谁都没有水位线），
+   * 之后每次通常是 0~几个请求。而且**中断不再需要从头来** ——
+   * 已经推上去的那些自己记着，重跑接着推剩下的。
+   */
+  const todo = pendingJobs(jobs);
   let synced = 0;
-  for (const job of jobs) {
+
+  /* 水位线分批落盘。每推一条就写一次 storage 的话，100 条记录要写 100 次
+     整个 jds 数组（约 1MB 一次）；攒着到最后一次性写，中断就前功尽弃。
+     折中成每 10 条落一次 —— 最坏情况白推 9 条，而 upsert 是幂等的，
+     代价只是几个请求。 */
+  const FLUSH_EVERY = 10;
+  const doneKeys = [];
+  async function flushWatermark() {
+    if (!doneKeys.length) return;
+    const now = new Date().toISOString();
+    const { jds = [] } = await chrome.storage.local.get({ jds: [] });
+    const mark = new Set(doneKeys);
+    await chrome.storage.local.set({
+      jds: jds.map((j) => (mark.has(j.key) ? markSynced(j, now) : j)),
+    });
+    doneKeys.length = 0;
+  }
+
+  for (const job of todo) {
     const jdResp = await authedFetch(s, restUrl(s.supabaseUrl, "/career_jds?on_conflict=user_id,job_key"), {
       method: "POST",
       headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
@@ -320,6 +357,7 @@ export async function syncAll(jobs, onProgress) {
     });
     if (!jdResp.ok) {
       const t = await jdResp.text().catch(() => "");
+      await flushWatermark(); // 已经推上去的那几条要记住，否则重跑又从头来
       return { ok: false, synced, reason: `同步「${job.title}」失败：${t.slice(0, 160)}` };
     }
 
@@ -339,13 +377,17 @@ export async function syncAll(jobs, onProgress) {
       });
       if (!histResp.ok) {
         const t = await histResp.text().catch(() => "");
+        await flushWatermark();
         return { ok: false, synced, reason: `同步「${job.title}」的状态历史失败：${t.slice(0, 160)}` };
       }
     }
 
     synced += 1;
-    onProgress?.(synced, jobs.length);
+    doneKeys.push(job.key);
+    if (doneKeys.length >= FLUSH_EVERY) await flushWatermark();
+    onProgress?.(synced, todo.length);
   }
+  await flushWatermark();
 
   // 顺手把云端简历拉下来。
   // ⚠️ 这一步是为了修一个静默失效：扩展的「简历诊断」读的是本机
@@ -407,17 +449,22 @@ export async function getLastSync() {
 /**
  * 还有多少东西没推到云端。
  *
- * ⚠️ 这个数字是**下限，不是总数**，界面上的措辞必须跟着它：
- *   - 新采集的能算准：记录的 ts 就是采集时刻，晚于上次同步就一定没推过。
- *   - 待删的能算准：墓碑本身就是"待推的删除"。
- *   - **改动算不准**：补薪资、改意向都不更新 ts，所以改过但没重推的记录
- *     数不出来。所以文案只说「N 条新采集未推」，不敢说「N 条待同步」——
- *     后者是个我兑现不了的承诺。
+ * 2026-09-17 之前这个数字是**下限而不是总数**：判据是 `ts > lastSyncAt`，
+ * 而 ts 是采集时刻 —— 补薪资、改意向、标状态都不动它，所以"改过但没重推"
+ * 的记录数不出来。当时界面的措辞因此只敢说「N 条新采集未推」。
+ *
+ * 现在每条记录自己记 syncedAt（见 lib/syncState.js），改动也数得到了，
+ * 所以这个数字就是总数，文案也改成了「N 条待推」。
  */
 export async function countPending(jobs) {
   const last = await getLastSync();
   const tombs = await getTombstones();
-  const fresh = last ? (jobs || []).filter((j) => j.ts && j.ts > last).length : (jobs || []).length;
+  /* ⚠️ 判据是每条记录自己的 syncedAt，不是全局的 lastSyncAt。
+     原来比的是 `j.ts > lastSyncAt`，而 ts 是**采集时间** ——
+     改状态 / 改意向 / 填归因都不动它。于是标完一批状态之后这里算出 0，
+     界面显示「已是最新」，而云端那批状态还是旧的。
+     **一个会撒谎的同步状态比没有更糟**：它让人以为推过了，于是不再手动同步。 */
+  const fresh = pendingJobs(jobs).length;
   return { fresh, deletes: tombs.length, neverSynced: !last };
 }
 

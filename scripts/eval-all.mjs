@@ -26,6 +26,7 @@ const SCRIPTS = [
   ["eval-pricing.mjs", "厂商目录与计价"],
   ["eval-jd-merge.mjs", "采集去重键与合并规则"],
   ["eval-status-model.mjs", "投递状态模型与挂掉归因"],
+  ["eval-sync-state.mjs", "同步水位线（待推判定与增量）"],
   ["eval-cite.mjs", "引用校验（golden C3）"],
   ["eval-errors.mjs", "错误分类与文案（golden F 组）"],
 ];

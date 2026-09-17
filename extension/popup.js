@@ -15,6 +15,7 @@ import {
   insertStageBefore,
 } from "./lib/pipeline.js";
 import { parseSalary, formatSalary } from "./lib/salary.js";
+import { touch } from "./lib/syncState.js";
 import {
   addTombstone,
   getSyncSettings,
@@ -64,14 +65,14 @@ async function setSalary(key, text) {
   if (i < 0) return;
   const t = String(text || "").trim();
   const p = t ? parseSalary(t) : null;
-  jds[i] = {
+  jds[i] = touch({
     ...jds[i],
     salary: t,
     salarySource: t ? "手填" : "",
     salaryParsed: p && p.parsed ? p : null,
     salaryBlocked: !t,
     salaryPending: false,
-  };
+  });
   await chrome.storage.local.set({ jds });
   CACHE = jds;
   render();
@@ -115,7 +116,10 @@ async function setField(key, field, value) {
   const i = jds.findIndex((x) => x.key === key);
   if (i < 0) return;
   // 状态走 pushStatus，会带上时间戳写进 statusHistory
-  jds[i] = field === "status" ? pushStatus(jds[i], value) : { ...jds[i], [field]: value };
+  const next = field === "status" ? pushStatus(jds[i], value) : { ...jds[i], [field]: value };
+  /* ⚠️ touch 不能漏。同步的待推判断看的是 updatedAt，
+     漏一处就有一类改动永远不会被算进"待推"，而界面照样显示「已是最新」。 */
+  jds[i] = touch(next);
   await chrome.storage.local.set({ jds });
   CACHE = jds;
   render();
@@ -246,7 +250,7 @@ async function insertStageBeforeTerminal(key, stage) {
   const { jds = [] } = await chrome.storage.local.get({ jds: [] });
   const i = jds.findIndex((x) => x.key === key);
   if (i < 0) return;
-  jds[i] = insertStageBefore(jds[i], stage);
+  jds[i] = touch(insertStageBefore(jds[i], stage)); // 补阶段也是改动，要计入待推
   await chrome.storage.local.set({ jds });
   CACHE = jds;
   render();
@@ -315,6 +319,11 @@ function download(text, filename, mime) {
 }
 
 function render() {
+  /* ⚠️ 每次重画都要重算「待推几条」。
+     原来它只在 load() 里画一次 —— 那时是自洽的，因为待推判据看的是采集时间，
+     改状态不影响它。现在判据换成了 updatedAt，**编辑会改变待推数**，
+     再不跟着刷就成了同一个谎的新版本：标完一批状态，那行字还写着「已是最新」。 */
+  paintSync();
   $("n").textContent = CACHE.length;
   const list = $("list");
   // 告诉 popup-guard.js "我确实跑到这儿了"。
@@ -585,9 +594,12 @@ async function paintSync() {
 
   const parts = [];
   parts.push(neverSynced ? "还没同步过" : "上次同步 " + ago(await getLastSync()));
-  // 措辞是「新采集未推」而不是「待同步」：改动（补薪资、改意向）不更新 ts，
-  // 数不出来。见 countPending 的注释——这个数字是下限不是总数。
-  if (fresh) parts.push(fresh + " 条新采集未推");
+  /* 措辞从「新采集未推」改回「待推」了。
+     原来那个限定词是诚实的：待推判据看的是 ts，改动（补薪资、改意向、
+     标状态）不更新 ts，数不出来，所以那个数字是**下限不是总数**。
+     现在判据换成每条自己的 syncedAt，新采的和改过的都数得到了，
+     再写「新采集」反而变成错的。 */
+  if (fresh) parts.push(fresh + " 条待推");
   if (deletes) parts.push(deletes + " 条删除未推");
   if (!fresh && !deletes && !neverSynced) parts.push("已是最新");
   el.textContent = parts.join(" · ");
